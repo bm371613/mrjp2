@@ -1,0 +1,111 @@
+position token PIdent (letter (letter|digit|'_')*) ;
+
+-- programs ------------------------------------------------
+
+entrypoints Program ;
+Program.    Program     ::= [TopDef] ;
+
+separator nonempty TopDef "" ;
+GlFunDef.   TopDef      ::= FunDef;
+ClsDef.     TopDef      ::= "class" PIdent "{" [ClsDefItem] "}" ;
+ClsExtDef.  TopDef      ::= "class" PIdent "extends" PIdent "{" [ClsDefItem] "}" ;
+
+FunDef.     FunDef      ::= Type PIdent "(" [Arg] ")" Block ;
+
+separator ClsDefItem "" ;
+AttrDef.    ClsDefItem  ::= Decl ";" ;
+MethDef.    ClsDefItem  ::= FunDef ;
+
+separator   Arg "," ;
+Arg. 	    Arg         ::= Type PIdent;
+
+-- statements ----------------------------------------------
+
+separator Stmt "" ;
+Empty.      Stmt        ::= ";" ;
+BStmt.      Stmt        ::= Block ;
+SDecl.      Stmt        ::= Decl ";" ;
+Ass.        Stmt        ::= LVal "=" Expr  ";" ;
+Incr.       Stmt        ::= LVal "++"  ";" ;
+Decr.       Stmt        ::= LVal "--"  ";" ;
+Ret.        Stmt        ::= "return" Expr ";" ;
+VRet.       Stmt        ::= "return" ";" ;
+Cond.       Stmt        ::= "if" "(" Expr ")" Stmt  ;
+CondElse.   Stmt        ::= "if" "(" Expr ")" Stmt "else" Stmt  ;
+While.      Stmt        ::= "while" "(" Expr ")" Stmt ;
+SForEach.   Stmt        ::= "for" "(" Type PIdent ":" Expr ")" Stmt;
+SExp.       Stmt        ::= Expr  ";" ;
+
+Block.      Block       ::= "{" [Stmt] "}" ;
+Decl.       Decl        ::= Type [Item] ;
+
+separator nonempty Item "," ;
+NoInit.     Item        ::= PIdent ; 
+Init.       Item        ::= PIdent "=" Expr ;
+
+-- lval ----------------------------------------------------
+
+LVar.       LVal        ::= PIdent ;
+LArr.       LVal        ::= Expr7 "[" Expr "]" ;
+LAttr.      LVal        ::= Expr7 "." PIdent ;
+
+
+-- types ---------------------------------------------------
+
+separator Type "," ;
+Int.        Type        ::= "int" ;
+Str.        Type        ::= "string" ;
+Bool.       Type        ::= "boolean" ;
+Void.       Type        ::= "void" ;
+Arr.        Type        ::= Type "[]" ;
+Cls.        Type        ::= PIdent ;
+
+-- expressions ---------------------------------------------
+
+separator Expr "," ;
+coercions Expr 7 ;
+
+ELitInt.    Expr7       ::= Integer ;
+EString.    Expr7       ::= String ;
+ELitTrue.   Expr7       ::= "true" ;
+ELitFalse.  Expr7       ::= "false" ;
+ESelf.      Expr7       ::= "self" ;
+ELVal.      Expr7       ::= LVal;
+ECall.      Expr7       ::= PIdent "(" [Expr] ")" ;
+EMethCall.  Expr7       ::= Expr7 "." PIdent "(" [Expr ] ")" ;
+
+ENewObj.    Expr6       ::= "new" PIdent ;
+ENewArr.    Expr6       ::= "new" Type "[" Expr "]";
+ENullCast.  Expr6       ::= "(" PIdent ")" "null" ;
+
+Neg.        Expr5       ::= "-" Expr6 ;
+Not.        Expr5       ::= "!" Expr6 ;
+
+EMul.       Expr4       ::= Expr4 MulOp Expr5 ;
+EAdd.       Expr3       ::= Expr3 AddOp Expr4 ;
+ERel.       Expr2       ::= Expr2 RelOp Expr3 ;
+EAnd.       Expr1       ::= Expr2 "&&" Expr1 ;
+EOr.        Expr        ::= Expr1 "||" Expr ;
+
+-- operators -----------------------------------------------
+
+Plus.       AddOp       ::= "+" ;
+Minus.      AddOp       ::= "-" ;
+
+Times.      MulOp       ::= "*" ;
+Div.        MulOp       ::= "/" ;
+Mod.        MulOp       ::= "%" ;
+
+LTH.        RelOp       ::= "<" ;
+LE.         RelOp       ::= "<=" ;
+GTH.        RelOp       ::= ">" ;
+GE.         RelOp       ::= ">=" ;
+EQU.        RelOp       ::= "==" ;
+NE.         RelOp       ::= "!=" ;
+
+-- comments ------------------------------------------------
+
+comment "#" ;
+comment "//" ;
+comment "/*" "*/" ;
+
