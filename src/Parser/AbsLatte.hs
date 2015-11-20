@@ -4,6 +4,7 @@ module Parser.AbsLatte where
 
 
 newtype PIdent = PIdent ((Int,Int),String) deriving (Eq,Ord,Show)
+newtype SemiC = SemiC ((Int,Int),String) deriving (Eq,Ord,Show)
 data Program =
    Program [TopDef]
   deriving (Eq,Ord,Show)
@@ -19,7 +20,7 @@ data FunDef =
   deriving (Eq,Ord,Show)
 
 data ClsDefItem =
-   AttrDef Decl
+   AttrDef Decl SemiC
  | MethDef FunDef
   deriving (Eq,Ord,Show)
 
@@ -28,19 +29,19 @@ data Arg =
   deriving (Eq,Ord,Show)
 
 data Stmt =
-   Empty
+   Empty SemiC
  | BStmt Block
- | SDecl Decl
- | Ass LVal Expr
- | Incr LVal
- | Decr LVal
- | Ret Expr
- | VRet
+ | SDecl Decl SemiC
+ | Ass LVal Expr SemiC
+ | Incr LVal SemiC
+ | Decr LVal SemiC
+ | Ret Expr SemiC
+ | VRet SemiC
  | Cond Expr Stmt
  | CondElse Expr Stmt Stmt
  | While Expr Stmt
  | SForEach Type PIdent Expr Stmt
- | SExp Expr
+ | SExp Expr SemiC
   deriving (Eq,Ord,Show)
 
 data Block =

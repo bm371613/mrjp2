@@ -1,4 +1,5 @@
 position token PIdent (letter (letter|digit|'_')*) ;
+position token SemiC ';' ;
 
 -- programs ------------------------------------------------
 
@@ -13,7 +14,7 @@ ClsExtDef.  TopDef      ::= "class" PIdent "extends" PIdent "{" [ClsDefItem] "}"
 FunDef.     FunDef      ::= Type PIdent "(" [Arg] ")" Block ;
 
 separator ClsDefItem "" ;
-AttrDef.    ClsDefItem  ::= Decl ";" ;
+AttrDef.    ClsDefItem  ::= Decl SemiC ;
 MethDef.    ClsDefItem  ::= FunDef ;
 
 separator   Arg "," ;
@@ -22,19 +23,19 @@ Arg. 	    Arg         ::= Type PIdent;
 -- statements ----------------------------------------------
 
 separator Stmt "" ;
-Empty.      Stmt        ::= ";" ;
+Empty.      Stmt        ::= SemiC ;
 BStmt.      Stmt        ::= Block ;
-SDecl.      Stmt        ::= Decl ";" ;
-Ass.        Stmt        ::= LVal "=" Expr  ";" ;
-Incr.       Stmt        ::= LVal "++"  ";" ;
-Decr.       Stmt        ::= LVal "--"  ";" ;
-Ret.        Stmt        ::= "return" Expr ";" ;
-VRet.       Stmt        ::= "return" ";" ;
-Cond.       Stmt        ::= "if" "(" Expr ")" Stmt  ;
-CondElse.   Stmt        ::= "if" "(" Expr ")" Stmt "else" Stmt  ;
+SDecl.      Stmt        ::= Decl SemiC ;
+Ass.        Stmt        ::= LVal "=" Expr SemiC ;
+Incr.       Stmt        ::= LVal "++" SemiC ;
+Decr.       Stmt        ::= LVal "--" SemiC ;
+Ret.        Stmt        ::= "return" Expr SemiC ;
+VRet.       Stmt        ::= "return" SemiC ;
+Cond.       Stmt        ::= "if" "(" Expr ")" Stmt ;
+CondElse.   Stmt        ::= "if" "(" Expr ")" Stmt "else" Stmt ;
 While.      Stmt        ::= "while" "(" Expr ")" Stmt ;
 SForEach.   Stmt        ::= "for" "(" Type PIdent ":" Expr ")" Stmt;
-SExp.       Stmt        ::= Expr  ";" ;
+SExp.       Stmt        ::= Expr SemiC ;
 
 Block.      Block       ::= "{" [Stmt] "}" ;
 Decl.       Decl        ::= Type [Item] ;

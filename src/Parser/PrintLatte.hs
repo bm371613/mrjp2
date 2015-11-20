@@ -83,6 +83,10 @@ instance Print PIdent where
   prt _ (PIdent (_,i)) = doc (showString ( i))
 
 
+instance Print SemiC where
+  prt _ (SemiC (_,i)) = doc (showString ( i))
+
+
 
 instance Print Program where
   prt i e = case e of
@@ -106,7 +110,7 @@ instance Print FunDef where
 
 instance Print ClsDefItem where
   prt i e = case e of
-   AttrDef decl -> prPrec i 0 (concatD [prt 0 decl , doc (showString ";")])
+   AttrDef decl semic -> prPrec i 0 (concatD [prt 0 decl , prt 0 semic])
    MethDef fundef -> prPrec i 0 (concatD [prt 0 fundef])
 
   prtList es = case es of
@@ -124,19 +128,19 @@ instance Print Arg where
 
 instance Print Stmt where
   prt i e = case e of
-   Empty  -> prPrec i 0 (concatD [doc (showString ";")])
+   Empty semic -> prPrec i 0 (concatD [prt 0 semic])
    BStmt block -> prPrec i 0 (concatD [prt 0 block])
-   SDecl decl -> prPrec i 0 (concatD [prt 0 decl , doc (showString ";")])
-   Ass lval expr -> prPrec i 0 (concatD [prt 0 lval , doc (showString "=") , prt 0 expr , doc (showString ";")])
-   Incr lval -> prPrec i 0 (concatD [prt 0 lval , doc (showString "++") , doc (showString ";")])
-   Decr lval -> prPrec i 0 (concatD [prt 0 lval , doc (showString "--") , doc (showString ";")])
-   Ret expr -> prPrec i 0 (concatD [doc (showString "return") , prt 0 expr , doc (showString ";")])
-   VRet  -> prPrec i 0 (concatD [doc (showString "return") , doc (showString ";")])
+   SDecl decl semic -> prPrec i 0 (concatD [prt 0 decl , prt 0 semic])
+   Ass lval expr semic -> prPrec i 0 (concatD [prt 0 lval , doc (showString "=") , prt 0 expr , prt 0 semic])
+   Incr lval semic -> prPrec i 0 (concatD [prt 0 lval , doc (showString "++") , prt 0 semic])
+   Decr lval semic -> prPrec i 0 (concatD [prt 0 lval , doc (showString "--") , prt 0 semic])
+   Ret expr semic -> prPrec i 0 (concatD [doc (showString "return") , prt 0 expr , prt 0 semic])
+   VRet semic -> prPrec i 0 (concatD [doc (showString "return") , prt 0 semic])
    Cond expr stmt -> prPrec i 0 (concatD [doc (showString "if") , doc (showString "(") , prt 0 expr , doc (showString ")") , prt 0 stmt])
    CondElse expr stmt0 stmt -> prPrec i 0 (concatD [doc (showString "if") , doc (showString "(") , prt 0 expr , doc (showString ")") , prt 0 stmt0 , doc (showString "else") , prt 0 stmt])
    While expr stmt -> prPrec i 0 (concatD [doc (showString "while") , doc (showString "(") , prt 0 expr , doc (showString ")") , prt 0 stmt])
    SForEach type' pident expr stmt -> prPrec i 0 (concatD [doc (showString "for") , doc (showString "(") , prt 0 type' , prt 0 pident , doc (showString ":") , prt 0 expr , doc (showString ")") , prt 0 stmt])
-   SExp expr -> prPrec i 0 (concatD [prt 0 expr , doc (showString ";")])
+   SExp expr semic -> prPrec i 0 (concatD [prt 0 expr , prt 0 semic])
 
   prtList es = case es of
    [] -> (concatD [])

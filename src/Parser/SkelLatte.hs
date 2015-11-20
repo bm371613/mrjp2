@@ -14,6 +14,11 @@ transPIdent x = case x of
   PIdent str  -> failure x
 
 
+transSemiC :: SemiC -> Result
+transSemiC x = case x of
+  SemiC str  -> failure x
+
+
 transProgram :: Program -> Result
 transProgram x = case x of
   Program topdefs  -> failure x
@@ -33,7 +38,7 @@ transFunDef x = case x of
 
 transClsDefItem :: ClsDefItem -> Result
 transClsDefItem x = case x of
-  AttrDef decl  -> failure x
+  AttrDef decl semic  -> failure x
   MethDef fundef  -> failure x
 
 
@@ -44,19 +49,19 @@ transArg x = case x of
 
 transStmt :: Stmt -> Result
 transStmt x = case x of
-  Empty  -> failure x
+  Empty semic  -> failure x
   BStmt block  -> failure x
-  SDecl decl  -> failure x
-  Ass lval expr  -> failure x
-  Incr lval  -> failure x
-  Decr lval  -> failure x
-  Ret expr  -> failure x
-  VRet  -> failure x
+  SDecl decl semic  -> failure x
+  Ass lval expr semic  -> failure x
+  Incr lval semic  -> failure x
+  Decr lval semic  -> failure x
+  Ret expr semic  -> failure x
+  VRet semic  -> failure x
   Cond expr stmt  -> failure x
   CondElse expr stmt1 stmt2  -> failure x
   While expr stmt  -> failure x
   SForEach type' pident expr stmt  -> failure x
-  SExp expr  -> failure x
+  SExp expr semic  -> failure x
 
 
 transBlock :: Block -> Result
