@@ -13,14 +13,17 @@ data Program =
   deriving (Eq,Ord,Show)
 
 data TopDef =
-   GlFunDef FunDef
- | ClsDef PIdent [ClsDefItem]
- | ClsExtDef PIdent PIdent [ClsDefItem]
+   GlFunDef { funDef :: FunDef }
+ | ClsDef { clsName :: PIdent, items :: [ClsDefItem] }
+ | ClsExtDef { clsName :: PIdent, super :: PIdent, items :: [ClsDefItem] }
   deriving (Eq,Ord,Show)
 
-data FunDef =
-   FunDef Type PIdent [Arg] Block
-  deriving (Eq,Ord,Show)
+data FunDef = FunDef
+ { returnType :: Type
+ , funName :: PIdent
+ , funArgs ::[Arg]
+ , body :: Block
+ } deriving (Eq,Ord,Show)
 
 data ClsDefItem =
    AttrDef Decl SemiC
@@ -28,7 +31,7 @@ data ClsDefItem =
   deriving (Eq,Ord,Show)
 
 data Arg =
-   Arg Type PIdent
+   Arg {argType :: Type, argName :: PIdent }
   deriving (Eq,Ord,Show)
 
 data Stmt =
@@ -115,4 +118,35 @@ data RelOp =
  | EQU
  | NE
   deriving (Eq,Ord,Show)
+
+-- helpers
+
+ident :: PIdent -> String
+ident (PIdent (_, ident)) = ident
+
+class Named a where
+    name :: a -> PIdent
+
+strName :: Named a => a -> String
+strName n = ident $ name n
+
+instance Named FunDef where
+    name = funName
+
+instance Named TopDef where
+    name (GlFunDef funDef) = name funDef
+    name cls = clsName cls
+
+instance Named Item where
+    name (NoInit name) = name
+    name (Init name _) = name
+
+class Positioned a where
+    lineNo :: a -> Int
+
+instance Positioned PIdent where
+    lineNo (PIdent ((lineNo, _), _)) = lineNo
+
+instance Positioned SemiC where
+    lineNo (SemiC ((lineNo, _), _)) = lineNo
 

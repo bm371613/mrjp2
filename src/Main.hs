@@ -3,6 +3,7 @@ import System.Environment (getArgs)
 import System.Exit (exitFailure)
 import System.IO (hPutStrLn, stderr)
 
+import Check
 import Parser.AbsLatte
 import Parser.LexLatte
 import Parser.ParLatte
@@ -21,5 +22,11 @@ main = do
             hPutStrLn stderr e
             exitFailure
         Ok tree -> return tree
+    globals <- case checkProgramReturningGlobals program of
+        Left error -> do
+            hPutStrLn stderr error
+            exitFailure
+        Right globals -> return globals
+    hPutStrLn stderr $ show globals -- fixme
     return ()
 
