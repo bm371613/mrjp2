@@ -9,6 +9,21 @@ type Result = Err String
 failure :: Show a => a -> Result
 failure x = Bad $ "Undefined case: " ++ show x
 
+transTIf :: TIf -> Result
+transTIf x = case x of
+  TIf str  -> failure x
+
+
+transTWhile :: TWhile -> Result
+transTWhile x = case x of
+  TWhile str  -> failure x
+
+
+transTFor :: TFor -> Result
+transTFor x = case x of
+  TFor str  -> failure x
+
+
 transPIdent :: PIdent -> Result
 transPIdent x = case x of
   PIdent str  -> failure x
@@ -57,10 +72,10 @@ transStmt x = case x of
   Decr lval semic  -> failure x
   Ret expr semic  -> failure x
   VRet semic  -> failure x
-  Cond expr stmt  -> failure x
-  CondElse expr stmt1 stmt2  -> failure x
-  While expr stmt  -> failure x
-  SForEach type' pident expr stmt  -> failure x
+  If tif expr stmt  -> failure x
+  IfElse tif expr stmt1 stmt2  -> failure x
+  While twhile expr stmt  -> failure x
+  For tfor type' pident expr stmt  -> failure x
   SExp expr semic  -> failure x
 
 

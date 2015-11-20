@@ -79,6 +79,18 @@ instance Print Double where
 
 
 
+instance Print TIf where
+  prt _ (TIf (_,i)) = doc (showString ( i))
+
+
+instance Print TWhile where
+  prt _ (TWhile (_,i)) = doc (showString ( i))
+
+
+instance Print TFor where
+  prt _ (TFor (_,i)) = doc (showString ( i))
+
+
 instance Print PIdent where
   prt _ (PIdent (_,i)) = doc (showString ( i))
 
@@ -136,10 +148,10 @@ instance Print Stmt where
    Decr lval semic -> prPrec i 0 (concatD [prt 0 lval , doc (showString "--") , prt 0 semic])
    Ret expr semic -> prPrec i 0 (concatD [doc (showString "return") , prt 0 expr , prt 0 semic])
    VRet semic -> prPrec i 0 (concatD [doc (showString "return") , prt 0 semic])
-   Cond expr stmt -> prPrec i 0 (concatD [doc (showString "if") , doc (showString "(") , prt 0 expr , doc (showString ")") , prt 0 stmt])
-   CondElse expr stmt0 stmt -> prPrec i 0 (concatD [doc (showString "if") , doc (showString "(") , prt 0 expr , doc (showString ")") , prt 0 stmt0 , doc (showString "else") , prt 0 stmt])
-   While expr stmt -> prPrec i 0 (concatD [doc (showString "while") , doc (showString "(") , prt 0 expr , doc (showString ")") , prt 0 stmt])
-   SForEach type' pident expr stmt -> prPrec i 0 (concatD [doc (showString "for") , doc (showString "(") , prt 0 type' , prt 0 pident , doc (showString ":") , prt 0 expr , doc (showString ")") , prt 0 stmt])
+   If tif expr stmt -> prPrec i 0 (concatD [prt 0 tif , doc (showString "(") , prt 0 expr , doc (showString ")") , prt 0 stmt])
+   IfElse tif expr stmt0 stmt -> prPrec i 0 (concatD [prt 0 tif , doc (showString "(") , prt 0 expr , doc (showString ")") , prt 0 stmt0 , doc (showString "else") , prt 0 stmt])
+   While twhile expr stmt -> prPrec i 0 (concatD [prt 0 twhile , doc (showString "(") , prt 0 expr , doc (showString ")") , prt 0 stmt])
+   For tfor type' pident expr stmt -> prPrec i 0 (concatD [prt 0 tfor , doc (showString "(") , prt 0 type' , prt 0 pident , doc (showString ":") , prt 0 expr , doc (showString ")") , prt 0 stmt])
    SExp expr semic -> prPrec i 0 (concatD [prt 0 expr , prt 0 semic])
 
   prtList es = case es of

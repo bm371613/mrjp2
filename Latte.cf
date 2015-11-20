@@ -1,3 +1,6 @@
+position token TIf {"if"} ;
+position token TWhile {"while"} ;
+position token TFor {"for"} ;
 position token PIdent (letter (letter|digit|'_')*) ;
 position token SemiC ';' ;
 
@@ -31,10 +34,10 @@ Incr.       Stmt        ::= LVal "++" SemiC ;
 Decr.       Stmt        ::= LVal "--" SemiC ;
 Ret.        Stmt        ::= "return" Expr SemiC ;
 VRet.       Stmt        ::= "return" SemiC ;
-Cond.       Stmt        ::= "if" "(" Expr ")" Stmt ;
-CondElse.   Stmt        ::= "if" "(" Expr ")" Stmt "else" Stmt ;
-While.      Stmt        ::= "while" "(" Expr ")" Stmt ;
-SForEach.   Stmt        ::= "for" "(" Type PIdent ":" Expr ")" Stmt;
+If.         Stmt        ::= TIf "(" Expr ")" Stmt ;
+IfElse.     Stmt        ::= TIf "(" Expr ")" Stmt "else" Stmt ;
+While.      Stmt        ::= TWhile "(" Expr ")" Stmt ;
+For.        Stmt        ::= TFor "(" Type PIdent ":" Expr ")" Stmt;
 SExp.       Stmt        ::= Expr SemiC ;
 
 Block.      Block       ::= "{" [Stmt] "}" ;
