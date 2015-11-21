@@ -20,4 +20,5 @@ executable compile
     FunctionalDependencies
     GeneralizedNewtypeDeriving
     MultiParamTypeClasses
+    UndecidableInstances
 

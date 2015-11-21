@@ -41,24 +41,25 @@ checkProgramReturningGlobals program = runCheckMonad m emptyCheckState
 -- helpers
 
 ensureUnique :: [PIdent] -> Check ()
-ensureUnique = ensureUniqueOnSorted . sortWith ident
+ensureUnique = ensureUniqueOnSorted . sortWith name
     where
         ensureUniqueOnSorted [] = return ()
         ensureUniqueOnSorted (_:[]) = return ()
         ensureUniqueOnSorted (first : second : rest) =
-            if ident first == ident second
+            if name first == name second
             then throwError $ printf
                     "Conflicting definitions of %s in lines %d, %d"
-                    (ident first) (lineNo first) (lineNo second)
+                    (name first) (lineNo first) (lineNo second)
             else ensureUniqueOnSorted (second : rest)
 
 checkTypeGivenClsNames :: Foldable c => c String -> Type -> Check ()
-checkTypeGivenClsNames clsNames (Arr t) = checkTypeGivenClsNames clsNames t
-checkTypeGivenClsNames clsNames (Cls pIdent) =
-    unless (ident pIdent`Data.Foldable.elem` clsNames) $ throwError $ printf
-        "Undefined: %s (line %d)"
-        (ident pIdent) (lineNo pIdent)
-checkTypeGivenClsNames _ _ = return ()
+checkTypeGivenClsNames _ (TPrim p) = return ()
+checkTypeGivenClsNames clsNames (TObj pIdent) = let clsName = name pIdent in
+    unless (clsName `Data.Foldable.elem` clsNames) $ throwError $ printf
+        "Undefined: %s" clsName
+checkTypeGivenClsNames _ (TPrimArr p) = return ()
+checkTypeGivenClsNames clsNames (TObjArr clsIdent) =
+    checkTypeGivenClsNames clsNames (TObj clsIdent)
 
 -- checkable
 
@@ -67,13 +68,13 @@ class Checkable a where
 
 instance Checkable Program where
     check (Program topDefs) = do
-        ensureUnique $ map name topDefs
-        checkClsExtTree (map strName clsDefs) clsExtDefs
+        ensureUnique $ map pIdent topDefs
+        checkClsExtTree (map name clsDefs) clsExtDefs
         funSigs <- mapM (makeFunSig . funDef) funDefs
         clsSigs <- mapM makeClsSig nonFunDefs
         let globals = Globals
-                (fromList $ zip (map strName nonFunDefs) clsSigs)
-                (fromList $ zip (map strName funDefs) funSigs)
+                (fromList $ zip (map name nonFunDefs) clsSigs)
+                (fromList $ zip (map name funDefs) funSigs)
         state (\s -> ((), CheckState globals (context s)))
         mapM_ check topDefs
         return ()
@@ -89,14 +90,15 @@ instance Checkable Program where
             checkClsExtTree _ [] = return ()
             checkClsExtTree [] (c : _) = throwError $ printf
                     "Cannot resolve class inheritance (line %d)"
-                    (lineNo $ name c)
+                    (lineNo $ pIdent c)
             checkClsExtTree (currentName : checkedNames) unchecked = do
                 let (ok, rest) = partition
-                        (\c -> ident (super c) == currentName)
+                        (\c -> name (super c) == currentName)
                         unchecked
-                checkClsExtTree (map strName ok ++ checkedNames) rest
+                checkClsExtTree (map name ok ++ checkedNames) rest
 
-            clsNames = map strName nonFunDefs
+            clsNames :: [String]
+            clsNames = map name nonFunDefs
 
             makeFunSig :: FunDef -> Check FunSig
             makeFunSig funDef = do
@@ -107,17 +109,12 @@ instance Checkable Program where
                 return $ FunSig ret args
 
             makeClsSigItem :: ClsDefItem -> Check ClsSigItem
-            makeClsSigItem (AttrDef (Decl t items) semiC) =
-                if length items == 1
-                then do
-                    checkTypeGivenClsNames clsNames t
-                    return $ Attr (strName $ head items) t
-                else throwError $ printf 
-                        "Single attribute declaration allowed here (line %d)"
-                        (lineNo semiC)
+            makeClsSigItem (AttrDef t pIdent _) = do
+                checkTypeGivenClsNames clsNames t
+                return $ Attr (name pIdent ) t
             makeClsSigItem (MethDef funDef) = do
                 funSig <- makeFunSig funDef
-                return $ Method (strName funDef) funSig
+                return $ Method (name funDef) funSig
 
             makeClsSig :: TopDef -> Check ClsSig
             makeClsSig (ClsDef _ items) = do
@@ -125,7 +122,7 @@ instance Checkable Program where
                 return $ ClsSig Nothing sigItems
             makeClsSig (ClsExtDef _ superPIdent items) = do
                 sigItems <- mapM makeClsSigItem items
-                return $ ClsSig (Just $ ident superPIdent) sigItems
+                return $ ClsSig (Just $ name superPIdent) sigItems
 
 instance Checkable TopDef where
     check _ = return () -- TODO

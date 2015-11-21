@@ -53,7 +53,7 @@ transFunDef x = case x of
 
 transClsDefItem :: ClsDefItem -> Result
 transClsDefItem x = case x of
-  AttrDef decl semic  -> failure x
+  AttrDef type' pident semic  -> failure x
   MethDef fundef  -> failure x
 
 
@@ -66,7 +66,7 @@ transStmt :: Stmt -> Result
 transStmt x = case x of
   Empty semic  -> failure x
   BStmt block  -> failure x
-  SDecl decl semic  -> failure x
+  Decl type' items semic  -> failure x
   Ass lval expr semic  -> failure x
   Incr lval semic  -> failure x
   Decr lval semic  -> failure x
@@ -84,11 +84,6 @@ transBlock x = case x of
   Block stmts  -> failure x
 
 
-transDecl :: Decl -> Result
-transDecl x = case x of
-  Decl type' items  -> failure x
-
-
 transItem :: Item -> Result
 transItem x = case x of
   NoInit pident  -> failure x
@@ -104,12 +99,18 @@ transLVal x = case x of
 
 transType :: Type -> Result
 transType x = case x of
+  TPrim primitive  -> failure x
+  TPrimArr primitive  -> failure x
+  TObjArr pident  -> failure x
+  TObj pident  -> failure x
+
+
+transPrimitive :: Primitive -> Result
+transPrimitive x = case x of
   Int  -> failure x
   Str  -> failure x
   Bool  -> failure x
   Void  -> failure x
-  Arr type'  -> failure x
-  Cls pident  -> failure x
 
 
 transExpr :: Expr -> Result

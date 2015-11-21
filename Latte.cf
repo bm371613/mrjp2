@@ -17,18 +17,18 @@ ClsExtDef.  TopDef      ::= "class" PIdent "extends" PIdent "{" [ClsDefItem] "}"
 FunDef.     FunDef      ::= Type PIdent "(" [Arg] ")" Block ;
 
 separator ClsDefItem "" ;
-AttrDef.    ClsDefItem  ::= Decl SemiC ;
+AttrDef.    ClsDefItem  ::= Type PIdent SemiC ;
 MethDef.    ClsDefItem  ::= FunDef ;
 
 separator   Arg "," ;
-Arg. 	    Arg         ::= Type PIdent;
+Arg.        Arg         ::= Type PIdent;
 
 -- statements ----------------------------------------------
 
 separator Stmt "" ;
 Empty.      Stmt        ::= SemiC ;
 BStmt.      Stmt        ::= Block ;
-SDecl.      Stmt        ::= Decl SemiC ;
+Decl.       Stmt        ::= Type [Item] SemiC ;
 Ass.        Stmt        ::= LVal "=" Expr SemiC ;
 Incr.       Stmt        ::= LVal "++" SemiC ;
 Decr.       Stmt        ::= LVal "--" SemiC ;
@@ -41,7 +41,6 @@ For.        Stmt        ::= TFor "(" Type PIdent ":" Expr ")" Stmt;
 SExp.       Stmt        ::= Expr SemiC ;
 
 Block.      Block       ::= "{" [Stmt] "}" ;
-Decl.       Decl        ::= Type [Item] ;
 
 separator nonempty Item "," ;
 NoInit.     Item        ::= PIdent ; 
@@ -57,12 +56,15 @@ LAttr.      LVal        ::= Expr7 "." PIdent ;
 -- types ---------------------------------------------------
 
 separator Type "," ;
-Int.        Type        ::= "int" ;
-Str.        Type        ::= "string" ;
-Bool.       Type        ::= "boolean" ;
-Void.       Type        ::= "void" ;
-Arr.        Type        ::= Type "[]" ;
-Cls.        Type        ::= PIdent ;
+TPrim.      Type        ::= Primitive ;
+TPrimArr.   Type        ::= Primitive "[]" ;
+TObjArr.    Type        ::= PIdent "[]" ;
+TObj.       Type        ::= PIdent ;
+
+Int.        Primitive   ::= "int" ;
+Str.        Primitive   ::= "string" ;
+Bool.       Primitive   ::= "boolean" ;
+Void.       Primitive   ::= "void" ;
 
 -- expressions ---------------------------------------------
 

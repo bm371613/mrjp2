@@ -26,7 +26,7 @@ data FunDef = FunDef
  } deriving (Eq,Ord,Show)
 
 data ClsDefItem =
-   AttrDef Decl SemiC
+   AttrDef Type PIdent SemiC
  | MethDef FunDef
   deriving (Eq,Ord,Show)
 
@@ -37,7 +37,7 @@ data Arg =
 data Stmt =
    Empty SemiC
  | BStmt Block
- | SDecl Decl SemiC
+ | Decl Type [Item] SemiC
  | Ass LVal Expr SemiC
  | Incr LVal SemiC
  | Decr LVal SemiC
@@ -54,10 +54,6 @@ data Block =
    Block [Stmt]
   deriving (Eq,Ord,Show)
 
-data Decl =
-   Decl Type [Item]
-  deriving (Eq,Ord,Show)
-
 data Item =
    NoInit PIdent
  | Init PIdent Expr
@@ -70,12 +66,17 @@ data LVal =
   deriving (Eq,Ord,Show)
 
 data Type =
+   TPrim Primitive
+ | TPrimArr Primitive
+ | TObjArr PIdent
+ | TObj PIdent
+  deriving (Eq,Ord,Show)
+
+data Primitive =
    Int
  | Str
  | Bool
  | Void
- | Arr Type
- | Cls PIdent
   deriving (Eq,Ord,Show)
 
 data Expr =
@@ -119,34 +120,35 @@ data RelOp =
  | NE
   deriving (Eq,Ord,Show)
 
+
 -- helpers
 
-ident :: PIdent -> String
-ident (PIdent (_, ident)) = ident
-
 class Named a where
-    name :: a -> PIdent
+    name :: a -> String
 
-strName :: Named a => a -> String
-strName n = ident $ name n
-
-instance Named FunDef where
-    name = funName
-
-instance Named TopDef where
-    name (GlFunDef funDef) = name funDef
-    name cls = clsName cls
-
-instance Named Item where
-    name (NoInit name) = name
-    name (Init name _) = name
+class PIdented a where
+    pIdent :: a -> PIdent
 
 class Positioned a where
     lineNo :: a -> Int
 
-instance Positioned PIdent where
-    lineNo (PIdent ((lineNo, _), _)) = lineNo
+instance PIdented PIdent where
+    pIdent = id
+
+instance PIdented a => Named a where
+    name x = let (PIdent (_, name)) = pIdent x in name
+
+instance PIdented a => Positioned a where
+    lineNo x = let PIdent ((lineNo, _), _) = pIdent x in lineNo
+
+instance PIdented FunDef where
+    pIdent = funName
+
+instance PIdented TopDef where
+    pIdent (GlFunDef funDef) = pIdent funDef
+    pIdent cls = clsName cls
 
 instance Positioned SemiC where
     lineNo (SemiC ((lineNo, _), _)) = lineNo
+
 

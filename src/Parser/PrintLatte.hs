@@ -122,7 +122,7 @@ instance Print FunDef where
 
 instance Print ClsDefItem where
   prt i e = case e of
-   AttrDef decl semic -> prPrec i 0 (concatD [prt 0 decl , prt 0 semic])
+   AttrDef type' pident semic -> prPrec i 0 (concatD [prt 0 type' , prt 0 pident , prt 0 semic])
    MethDef fundef -> prPrec i 0 (concatD [prt 0 fundef])
 
   prtList es = case es of
@@ -142,7 +142,7 @@ instance Print Stmt where
   prt i e = case e of
    Empty semic -> prPrec i 0 (concatD [prt 0 semic])
    BStmt block -> prPrec i 0 (concatD [prt 0 block])
-   SDecl decl semic -> prPrec i 0 (concatD [prt 0 decl , prt 0 semic])
+   Decl type' items semic -> prPrec i 0 (concatD [prt 0 type' , prt 0 items , prt 0 semic])
    Ass lval expr semic -> prPrec i 0 (concatD [prt 0 lval , doc (showString "=") , prt 0 expr , prt 0 semic])
    Incr lval semic -> prPrec i 0 (concatD [prt 0 lval , doc (showString "++") , prt 0 semic])
    Decr lval semic -> prPrec i 0 (concatD [prt 0 lval , doc (showString "--") , prt 0 semic])
@@ -163,11 +163,6 @@ instance Print Block where
    Block stmts -> prPrec i 0 (concatD [doc (showString "{") , prt 0 stmts , doc (showString "}")])
 
 
-instance Print Decl where
-  prt i e = case e of
-   Decl type' items -> prPrec i 0 (concatD [prt 0 type' , prt 0 items])
-
-
 instance Print Item where
   prt i e = case e of
    NoInit pident -> prPrec i 0 (concatD [prt 0 pident])
@@ -186,17 +181,23 @@ instance Print LVal where
 
 instance Print Type where
   prt i e = case e of
-   Int  -> prPrec i 0 (concatD [doc (showString "int")])
-   Str  -> prPrec i 0 (concatD [doc (showString "string")])
-   Bool  -> prPrec i 0 (concatD [doc (showString "boolean")])
-   Void  -> prPrec i 0 (concatD [doc (showString "void")])
-   Arr type' -> prPrec i 0 (concatD [prt 0 type' , doc (showString "[]")])
-   Cls pident -> prPrec i 0 (concatD [prt 0 pident])
+   TPrim primitive -> prPrec i 0 (concatD [prt 0 primitive])
+   TPrimArr primitive -> prPrec i 0 (concatD [prt 0 primitive , doc (showString "[]")])
+   TObjArr pident -> prPrec i 0 (concatD [prt 0 pident , doc (showString "[]")])
+   TObj pident -> prPrec i 0 (concatD [prt 0 pident])
 
   prtList es = case es of
    [] -> (concatD [])
    [x] -> (concatD [prt 0 x])
    x:xs -> (concatD [prt 0 x , doc (showString ",") , prt 0 xs])
+
+instance Print Primitive where
+  prt i e = case e of
+   Int  -> prPrec i 0 (concatD [doc (showString "int")])
+   Str  -> prPrec i 0 (concatD [doc (showString "string")])
+   Bool  -> prPrec i 0 (concatD [doc (showString "boolean")])
+   Void  -> prPrec i 0 (concatD [doc (showString "void")])
+
 
 instance Print Expr where
   prt i e = case e of
