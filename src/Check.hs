@@ -124,6 +124,7 @@ ensureAssignable lhs rhs = do
                 CheckState globals _ <- get
                 return $ elem (name lId)
                     $ superNames $ classes globals ! name rId
+            (TObj _, BaseObject) -> return True
             otherwise -> return $ lhs == rhs
     unless ok $ throwError "Type mismatch"
 

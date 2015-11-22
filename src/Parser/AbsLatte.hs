@@ -78,6 +78,7 @@ data Type =
  | TObjArr PIdent
  | TObj PIdent
  | Void
+ | BaseObject
   deriving (Eq,Ord,Show)
 
 data Primitive =
