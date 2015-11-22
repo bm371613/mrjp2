@@ -97,10 +97,10 @@ withPushedScope s m = do
 
 -- checkable
 
-class Checkable a where
-    check :: a -> Check ()
+class Checkable a t | a -> t where
+    check :: a -> Check t
 
-instance Checkable Program where
+instance Checkable Program () where
     check (Program topDefs) = do
         -- ensure top defs have unique identifiers
         ensureUnique $ map pIdent topDefs
@@ -167,7 +167,7 @@ instance Checkable Program where
             return $ insert (name clsIdent)
                 (ClsSig (name clsIdent:superNames superSig) sigItems) sigs
 
-instance Checkable TopDef where
+instance Checkable TopDef () where
     check (GlFunDef funDef) = do
         s <- get
         let funSig = (functions $ globals s) ! (name funDef)
@@ -184,7 +184,7 @@ instance Checkable TopDef where
             withContext (MethodContext clsSig (makeFunSig funDef) [])
                 $ check funDef
 
-instance Checkable FunDef where
+instance Checkable FunDef () where
     check funDef = do
         checkType $ returnType funDef
         ensureUnique $ map pIdent (funArgs funDef)
@@ -194,10 +194,10 @@ instance Checkable FunDef where
         -- TODO check return / error
         return ()
 
-instance Checkable Block where
+instance Checkable Block () where
     check (Block stmts) = withPushedScope empty $ mapM_ check stmts
 
-instance Checkable Stmt where
+instance Checkable Stmt () where
     check _ = return () -- TODO
 
 
