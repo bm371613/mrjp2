@@ -191,8 +191,23 @@ instance Checkable FunDef () where
         mapM_ (checkNonVoidType (funName funDef) . argType) (funArgs funDef)
         let argsScope = fromList [(name id, t) | Arg t id <- funArgs funDef]
         withPushedScope argsScope $ check $ body funDef
-        -- TODO check return / error
+        let (Block stmts) = body funDef
+        unless (returnType funDef == TPrim Void) $
+            unless (any terminating stmts) $ throwError $ printf
+                "Missing return statement in %s (line %d)"
+                (name funDef) (lineNo funDef)
         return ()
+        where
+        terminating (Ret _ _) = True
+        terminating (VRet _) = True
+        terminating (BStmt (Block stmts)) = any terminating stmts
+        terminating (If _ ELitTrue s) = terminating s
+        terminating (IfElse _ ELitTrue s _) = terminating s
+        terminating (IfElse _ ELitFalse _ s) = terminating s
+        terminating (IfElse _ _ s1 s2) = (terminating s1) && (terminating s2)
+        terminating (While _ ELitTrue s) = True
+        terminating (SExp (ECall ident []) _) = (name ident == "error")
+        terminating _ = False
 
 instance Checkable Block () where
     check (Block stmts) = withPushedScope empty $ mapM_ check stmts
