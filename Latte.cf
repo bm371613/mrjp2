@@ -75,6 +75,7 @@ ELitInt.    Expr7       ::= Integer ;
 EString.    Expr7       ::= String ;
 ELitTrue.   Expr7       ::= "true" ;
 ELitFalse.  Expr7       ::= "false" ;
+ENull.      Expr7       ::= "null" ;
 ESelf.      Expr7       ::= "self" ;
 ELVal.      Expr7       ::= LVal;
 ECall.      Expr7       ::= PIdent "(" [Expr] ")" ;

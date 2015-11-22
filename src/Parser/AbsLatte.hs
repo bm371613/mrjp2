@@ -84,6 +84,7 @@ data Expr =
  | EString String
  | ELitTrue
  | ELitFalse
+ | ENull
  | ESelf
  | ELVal LVal
  | ECall PIdent [Expr]

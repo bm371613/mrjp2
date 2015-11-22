@@ -119,6 +119,7 @@ transExpr x = case x of
   EString str  -> failure x
   ELitTrue  -> failure x
   ELitFalse  -> failure x
+  ENull  -> failure x
   ESelf  -> failure x
   ELVal lval  -> failure x
   ECall pident exprs  -> failure x

@@ -205,6 +205,7 @@ instance Print Expr where
    EString str -> prPrec i 7 (concatD [prt 0 str])
    ELitTrue  -> prPrec i 7 (concatD [doc (showString "true")])
    ELitFalse  -> prPrec i 7 (concatD [doc (showString "false")])
+   ENull  -> prPrec i 7 (concatD [doc (showString "null")])
    ESelf  -> prPrec i 7 (concatD [doc (showString "self")])
    ELVal lval -> prPrec i 7 (concatD [prt 0 lval])
    ECall pident exprs -> prPrec i 7 (concatD [prt 0 pident , doc (showString "(") , prt 0 exprs , doc (showString ")")])
