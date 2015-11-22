@@ -1,6 +1,6 @@
 module Check (checkProgramReturningGlobals) where
 
-import Control.Monad (foldM, unless)
+import Control.Monad (foldM, unless, when)
 import Control.Monad.Except (
     catchError, Except, MonadError, runExcept, throwError)
 import Control.Monad.State (MonadState, StateT, evalStateT, get, put, state)
@@ -21,9 +21,25 @@ type Scope = Map String Type
 
 data Context =
       NoContext
-    | FunctionContext { ctxFun :: FunSig, ctxScopes :: [Scope] }
-    | MethodContext { ctxCls ::ClsSig, ctxFun :: FunSig, ctxScopes :: [Scope] }
-    deriving (Show)
+    | FunctionContext
+    { ctxFun :: FunSig
+    , ctxScopes :: [Scope]
+    }
+    | MethodContext
+    { ctxCls :: ClsSig
+    , ctxFun :: FunSig
+    , ctxScopes :: [Scope]
+    } deriving (Show)
+
+setScopes scopes (FunctionContext f _) = FunctionContext f scopes
+setScopes scopes (MethodContext c f _) = MethodContext c f scopes
+
+definedByContext :: Context -> String -> Maybe Type
+definedByContext (MethodContext (ClsSig _ items) _ _) n =
+    case find (\i -> name i == n) items of
+        Just (Attr _ t) -> Just t
+        otherwise -> Nothing
+definedByContext _ _ = Nothing
 
 data CheckState = CheckState
     { globals :: Globals
@@ -60,16 +76,6 @@ ensureUnique = ensureUniqueOnSorted . sortWith name
                 (name first) (lineNo first) (lineNo second)
         else ensureUniqueOnSorted (second : rest)
 
-checkType :: Type -> Check ()
-checkType Void = return ()
-checkType (TPrim p) = return ()
-checkType (TObj pIdent) = let clsName = name pIdent in do
-    s <- get
-    unless (member clsName $ classes $ globals s) $ throwError $ printf
-        "Undefined: %s (line %d)" clsName (lineNo pIdent)
-checkType (TPrimArr p) = return ()
-checkType (TObjArr clsIdent) = checkType (TObj clsIdent)
-
 withContext :: Context -> Check a -> Check a
 withContext c m = do
     CheckState globals oldContext <- get
@@ -87,8 +93,39 @@ withPushedScope s m = do
     put $ CheckState globals c
     return result
     where
-    setScopes scopes (FunctionContext f _) = FunctionContext f scopes
-    setScopes scopes (MethodContext c f _) = MethodContext c f scopes
+
+define :: PIdent -> Type -> Check ()
+define ident t = do
+    CheckState globals c <- get
+    let (scope:scopes) = ctxScopes c
+    let n = name ident
+    when (member n scope) $ throwError $ printf
+        "%s is already defined in this scope (line %d)" n (lineNo ident)
+    let newScope = insert n t scope
+    put $ CheckState globals (setScopes (newScope:scopes) c)
+    return ()
+
+definedType :: PIdent -> Check Type
+definedType ident = do
+    CheckState globals c <- get
+    let scopes = ctxScopes c
+    let n = name ident
+    case find (member n) scopes of
+        Just scope -> return $ scope ! n
+        Nothing -> case definedByContext c n of
+            Just t -> return t
+            Nothing -> throwError $ printf
+                "Undefined %s (line %d)" n (lineNo ident)
+
+ensureAssignable :: Positioned p => p -> Type -> Type -> Check ()
+ensureAssignable p lhs rhs = do
+    ok <- case (lhs, rhs) of
+            (TObj lId, TObj rId) -> do
+                CheckState globals _ <- get
+                return $ elem (name lId)
+                    $ superNames $ (classes globals) ! (name rId)
+            otherwise -> return $ lhs == rhs
+    unless ok $ throwError $ printf "Type mismatch (line %d)" (lineNo p)
 
 -- checkable
 
@@ -162,6 +199,16 @@ instance Checkable Program () where
             return $ insert (name clsIdent)
                 (ClsSig (name clsIdent:superNames superSig) sigItems) sigs
 
+instance Checkable Type () where
+    check Void = return ()
+    check (TPrim p) = return ()
+    check (TObj pIdent) = let clsName = name pIdent in do
+        s <- get
+        unless (member clsName $ classes $ globals s) $ throwError $ printf
+            "Undefined: %s (line %d)" clsName (lineNo pIdent)
+    check (TPrimArr p) = return ()
+    check (TObjArr clsIdent) = check (TObj clsIdent)
+
 instance Checkable TopDef () where
     check (GlFunDef funDef) = do
         s <- get
@@ -172,7 +219,7 @@ instance Checkable TopDef () where
         mapM_ checkItem $ items clsDef
         return ()
         where
-        checkItem (AttrDef t pIdent _) = checkType t
+        checkItem (AttrDef t pIdent _) = check t
         checkItem (MethDef funDef) = do
             s <- get
             let clsSig = (classes $ globals s) ! (name clsDef)
@@ -181,9 +228,9 @@ instance Checkable TopDef () where
 
 instance Checkable FunDef () where
     check funDef = do
-        checkType $ returnType funDef
+        check $ returnType funDef
         ensureUnique $ map pIdent (funArgs funDef)
-        mapM_ (checkType . argType) (funArgs funDef)
+        mapM_ (check . argType) (funArgs funDef)
         let argsScope = fromList [(name id, t) | Arg t id <- funArgs funDef]
         withPushedScope argsScope $ check $ body funDef
         let (Block stmts) = body funDef
@@ -208,6 +255,71 @@ instance Checkable Block () where
     check (Block stmts) = withPushedScope empty $ mapM_ check stmts
 
 instance Checkable Stmt () where
-    check _ = return () -- TODO
+    check (Empty _) = return ()
+    check (BStmt block) = check block
+    check (Decl t items semiC) = do
+        check t
+        sequence_ [define (pIdent i) t | i <- items]
+    check (Ass lv e semiC) = do
+        lt <- check lv
+        et <- check e
+        ensureAssignable semiC lt et
+    check (Incr lv semiC) = do
+        lt <- check lv
+        unless (lt == TPrim Int) $ throwError $ printf
+            "Type mismatch in incrementation (line %d)" (lineNo semiC)
+    check (Decr lv semiC) = do
+        lt <- check lv
+        unless (lt == TPrim Int) $ throwError $ printf
+            "Type mismatch in decrementation (line %d)" (lineNo semiC)
+    check (Ret e semiC) = do
+        et <- check e
+        s <- get
+        let FunSig rt _ = ctxFun $ context s
+        ensureAssignable semiC rt et
+    check (VRet semiC) = do
+        s <- get
+        let FunSig rt _ = ctxFun $ context s
+        unless (rt == Void) $ throwError $ printf
+            "Type mismatch in return statement (line %d)" (lineNo semiC)
+    check (If tIf e s) = do
+        et <- check e
+        unless (et == TPrim Bool) $ throwError $ printf
+            "Type mismatch in if condition (line %d)" (lineNo tIf)
+        check s
+    check (IfElse tIf e s1 s2) = do
+        et <- check e
+        unless (et == TPrim Bool) $ throwError $ printf
+            "Type mismatch in if condition (line %d)" (lineNo tIf)
+        check s1
+        check s2
+    check (While tWhile e s) = do
+        et <- check e
+        unless (et == TPrim Bool) $ throwError $ printf
+            "Type mismatch in while condition (line %d)" (lineNo tWhile)
+        check s
+    check (For tFor t ident e s) = do
+        check t
+        et <- check e
+        at <- case et of
+            TPrimArr p -> return $ TPrim p
+            TObjArr i -> return $ TObj i
+            otherwise -> throwError $ printf
+                "Iterating a non-array value (line %d)" (lineNo tFor)
+        ensureAssignable tFor t at
+        withPushedScope empty $ do
+            define ident t
+            check s
+    check (SExp e _) = do
+        check e
+        return ()
 
+instance Checkable LVal Type where
+    check _ = return Void -- TODO
+
+instance Checkable Item Type where
+    check _ = return Void -- TODO
+
+instance Checkable Expr Type where
+    check _ = return Void -- TODO
 

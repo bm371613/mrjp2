@@ -163,7 +163,19 @@ instance PIdented ClsDefItem where
 instance PIdented Arg where
     pIdent (Arg _ pIdent) = pIdent
 
+instance PIdented Item where
+    pIdent (NoInit pIdent) = pIdent
+    pIdent (Init pIdent _) = pIdent
+
 instance Positioned SemiC where
     lineNo (SemiC ((lineNo, _), _)) = lineNo
 
+instance Positioned TIf where
+    lineNo (TIf ((lineNo, _), _)) = lineNo
+
+instance Positioned TWhile where
+    lineNo (TWhile ((lineNo, _), _)) = lineNo
+
+instance Positioned TFor where
+    lineNo (TFor ((lineNo, _), _)) = lineNo
 
