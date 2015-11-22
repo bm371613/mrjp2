@@ -148,6 +148,10 @@ instance PIdented TopDef where
     pIdent (GlFunDef funDef) = pIdent funDef
     pIdent cls = clsName cls
 
+instance PIdented ClsDefItem where
+    pIdent (AttrDef _ pIdent _) = pIdent
+    pIdent (MethDef m) = pIdent m
+
 instance Positioned SemiC where
     lineNo (SemiC ((lineNo, _), _)) = lineNo
 

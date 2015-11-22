@@ -20,5 +20,6 @@ executable compile
     FunctionalDependencies
     GeneralizedNewtypeDeriving
     MultiParamTypeClasses
+    OverlappingInstances
     UndecidableInstances
 
