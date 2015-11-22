@@ -49,6 +49,7 @@ transTopDef x = case x of
 transFunDef :: FunDef -> Result
 transFunDef x = case x of
   FunDef type' pident args block  -> failure x
+  VoidFunDef pident args block  -> failure x
 
 
 transClsDefItem :: ClsDefItem -> Result
@@ -103,6 +104,7 @@ transType x = case x of
   TPrimArr primitive  -> failure x
   TObjArr pident  -> failure x
   TObj pident  -> failure x
+  Void  -> failure x
 
 
 transPrimitive :: Primitive -> Result
@@ -110,7 +112,6 @@ transPrimitive x = case x of
   Int  -> failure x
   Str  -> failure x
   Bool  -> failure x
-  Void  -> failure x
 
 
 transExpr :: Expr -> Result

@@ -61,6 +61,7 @@ ensureUnique = ensureUniqueOnSorted . sortWith name
         else ensureUniqueOnSorted (second : rest)
 
 checkType :: Type -> Check ()
+checkType Void = return ()
 checkType (TPrim p) = return ()
 checkType (TObj pIdent) = let clsName = name pIdent in do
     s <- get
@@ -68,12 +69,6 @@ checkType (TObj pIdent) = let clsName = name pIdent in do
         "Undefined: %s (line %d)" clsName (lineNo pIdent)
 checkType (TPrimArr p) = return ()
 checkType (TObjArr clsIdent) = checkType (TObj clsIdent)
-
-checkNonVoidType :: PIdent -> Type -> Check ()
-checkNonVoidType pIdent (TPrim Void) = throwError $ printf
-        "Void is not allowed as attribute or argument type (line %d)"
-        (lineNo pIdent)
-checkNonVoidType _ t = checkType t
 
 withContext :: Context -> Check a -> Check a
 withContext c m = do
@@ -177,7 +172,7 @@ instance Checkable TopDef () where
         mapM_ checkItem $ items clsDef
         return ()
         where
-        checkItem (AttrDef t pIdent _) = checkNonVoidType pIdent t
+        checkItem (AttrDef t pIdent _) = checkType t
         checkItem (MethDef funDef) = do
             s <- get
             let clsSig = (classes $ globals s) ! (name clsDef)
@@ -188,11 +183,11 @@ instance Checkable FunDef () where
     check funDef = do
         checkType $ returnType funDef
         ensureUnique $ map pIdent (funArgs funDef)
-        mapM_ (checkNonVoidType (funName funDef) . argType) (funArgs funDef)
+        mapM_ (checkType . argType) (funArgs funDef)
         let argsScope = fromList [(name id, t) | Arg t id <- funArgs funDef]
         withPushedScope argsScope $ check $ body funDef
         let (Block stmts) = body funDef
-        unless (returnType funDef == TPrim Void) $
+        unless (returnType funDef == Void) $
             unless (any terminating stmts) $ throwError $ printf
                 "Missing return statement in %s (line %d)"
                 (name funDef) (lineNo funDef)

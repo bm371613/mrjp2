@@ -118,6 +118,7 @@ instance Print TopDef where
 instance Print FunDef where
   prt i e = case e of
    FunDef type' pident args block -> prPrec i 0 (concatD [prt 0 type' , prt 0 pident , doc (showString "(") , prt 0 args , doc (showString ")") , prt 0 block])
+   VoidFunDef pident args block -> prPrec i 0 (concatD [doc (showString "void") , prt 0 pident , doc (showString "(") , prt 0 args , doc (showString ")") , prt 0 block])
 
 
 instance Print ClsDefItem where
@@ -185,6 +186,7 @@ instance Print Type where
    TPrimArr primitive -> prPrec i 0 (concatD [prt 0 primitive , doc (showString "[]")])
    TObjArr pident -> prPrec i 0 (concatD [prt 0 pident , doc (showString "[]")])
    TObj pident -> prPrec i 0 (concatD [prt 0 pident])
+   Void  -> prPrec i 0 (concatD [])
 
   prtList es = case es of
    [] -> (concatD [])
@@ -196,7 +198,6 @@ instance Print Primitive where
    Int  -> prPrec i 0 (concatD [doc (showString "int")])
    Str  -> prPrec i 0 (concatD [doc (showString "string")])
    Bool  -> prPrec i 0 (concatD [doc (showString "boolean")])
-   Void  -> prPrec i 0 (concatD [doc (showString "void")])
 
 
 instance Print Expr where

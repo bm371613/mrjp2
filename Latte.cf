@@ -15,6 +15,7 @@ ClsDef.     TopDef      ::= "class" PIdent "{" [ClsDefItem] "}" ;
 ClsExtDef.  TopDef      ::= "class" PIdent "extends" PIdent "{" [ClsDefItem] "}" ;
 
 FunDef.     FunDef      ::= Type PIdent "(" [Arg] ")" Block ;
+VoidFunDef. FunDef      ::= "void" PIdent "(" [Arg] ")" Block ;
 
 separator ClsDefItem "" ;
 AttrDef.    ClsDefItem  ::= Type PIdent SemiC ;
@@ -60,11 +61,11 @@ TPrim.      Type        ::= Primitive ;
 TPrimArr.   Type        ::= Primitive "[]" ;
 TObjArr.    Type        ::= PIdent "[]" ;
 TObj.       Type        ::= PIdent ;
+internal Void. Type ::= ;
 
 Int.        Primitive   ::= "int" ;
 Str.        Primitive   ::= "string" ;
 Bool.       Primitive   ::= "boolean" ;
-Void.       Primitive   ::= "void" ;
 
 -- expressions ---------------------------------------------
 

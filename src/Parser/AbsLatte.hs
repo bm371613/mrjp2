@@ -19,11 +19,18 @@ data TopDef =
   deriving (Eq,Ord,Show)
 
 data FunDef = FunDef
- { returnType :: Type
+ { returnType_ :: Type
  , funName :: PIdent
  , funArgs ::[Arg]
  , body :: Block
+ } | VoidFunDef
+ { funName :: PIdent
+ , funArgs ::[Arg]
+ , body :: Block
  } deriving (Eq,Ord,Show)
+
+returnType (FunDef t _ _ _) = t
+returnType (VoidFunDef _ _ _) = Void
 
 data ClsDefItem =
    AttrDef Type PIdent SemiC
@@ -70,13 +77,13 @@ data Type =
  | TPrimArr Primitive
  | TObjArr PIdent
  | TObj PIdent
+ | Void
   deriving (Eq,Ord,Show)
 
 data Primitive =
    Int
  | Str
  | Bool
- | Void
   deriving (Eq,Ord,Show)
 
 data Expr =
