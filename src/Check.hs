@@ -263,7 +263,14 @@ instance Checkable Stmt () where
     check (BStmt block) = check block
     check (Decl t items semiC) = do
         check t
-        located semiC $ sequence_ [define (pIdent i) t | i <- items]
+        sequence_ [do
+            case i of
+                Init _ e -> located semiC $ do
+                    et <- check e
+                    ensureAssignable t et
+                NoInit _ -> return ()
+            define (pIdent i) t
+            | i <- items]
     check (Ass lv e semiC) = located semiC $ do
         lt <- check lv
         et <- check e
@@ -325,9 +332,6 @@ instance Checkable LVal Type where
             TPrimArr p -> return $ TPrim p
             TObjArr i -> return $ TObj i
             otherwise -> throwError "Indexing a non-array value"
-
-instance Checkable Item Type where
-    check _ = return Void -- TODO
 
 instance Checkable Expr Type where
     check _ = return Void -- TODO
