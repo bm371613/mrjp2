@@ -152,6 +152,9 @@ instance PIdented ClsDefItem where
     pIdent (AttrDef _ pIdent _) = pIdent
     pIdent (MethDef m) = pIdent m
 
+instance PIdented Arg where
+    pIdent (Arg _ pIdent) = pIdent
+
 instance Positioned SemiC where
     lineNo (SemiC ((lineNo, _), _)) = lineNo
 

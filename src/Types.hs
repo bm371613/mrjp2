@@ -13,8 +13,8 @@ data ClsSig = ClsSig
 data ClsSigItem = Attr String Type | Method String FunSig deriving (Show)
 
 data Globals = Globals
-    { classes :: (Map String ClsSig)
-    , functions :: (Map String FunSig)
+    { classes :: Map String ClsSig
+    , functions :: Map String FunSig
     } deriving (Show)
 
 instance Named ClsSigItem where

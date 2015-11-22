@@ -7,7 +7,7 @@ import Control.Monad.State (MonadState, StateT, evalStateT, get, state)
 import Data.Foldable (Foldable, find)
 import qualified Data.Foldable (elem)
 import Data.List (nub, partition)
-import Data.Map (empty, fromList, insert, Map, (!))
+import Data.Map (empty, fromList, insert, Map, member, (!))
 import qualified Data.Map (lookup)
 import GHC.Exts (sortWith)
 import Text.Printf (printf)
@@ -17,13 +17,19 @@ import Types
 
 -- check monad
 
-type Context = ()
+type Scope = Map String Type
+
+data Context =
+      NoContext
+    | FunctionContext FunSig [Scope]
+    | MethodContext ClsSig FunSig [Scope]
+    deriving (Show)
 
 data CheckState = CheckState
     { globals :: Globals
     , context :: Context
     } deriving (Show)
-emptyCheckState = CheckState (Globals empty empty) ()
+emptyCheckState = CheckState (Globals empty empty) NoContext
 
 newtype Check a
     = Check (StateT CheckState (Except String) a)
@@ -54,14 +60,20 @@ ensureUnique = ensureUniqueOnSorted . sortWith name
                     (name first) (lineNo first) (lineNo second)
             else ensureUniqueOnSorted (second : rest)
 
-checkTypeGivenClsNames :: Foldable c => c String -> Type -> Check ()
-checkTypeGivenClsNames _ (TPrim p) = return ()
-checkTypeGivenClsNames clsNames (TObj pIdent) = let clsName = name pIdent in
-    unless (clsName `Data.Foldable.elem` clsNames) $ throwError $ printf
+checkType :: Type -> Check ()
+checkType (TPrim p) = return ()
+checkType (TObj pIdent) = let clsName = name pIdent in do
+    s <- get
+    unless (member clsName $ classes $ globals s) $ throwError $ printf
         "Undefined: %s (line %d)" clsName (lineNo pIdent)
-checkTypeGivenClsNames _ (TPrimArr p) = return ()
-checkTypeGivenClsNames clsNames (TObjArr clsIdent) =
-    checkTypeGivenClsNames clsNames (TObj clsIdent)
+checkType (TPrimArr p) = return ()
+checkType (TObjArr clsIdent) = checkType (TObj clsIdent)
+
+checkNonVoidType :: PIdent -> Type -> Check ()
+checkNonVoidType pIdent (TPrim Void) = throwError $ printf
+        "Void is not allowed as attribute or argument type (line %d)"
+        (lineNo pIdent)
+checkNonVoidType _ t = checkType t
 
 -- checkable
 
@@ -70,17 +82,18 @@ class Checkable a where
 
 instance Checkable Program where
     check (Program topDefs) = do
+        -- ensure top defs have unique identifiers
         ensureUnique $ map pIdent topDefs
+        -- put signatures of functions and classes to state
         topoClsOrder <- checkClsExtTree clsDefs clsExtDefs
-        funSigs <- mapM (makeFunSig . funDef) funDefs
         clsSigMap <- foldM addClsSig empty topoClsOrder
-        let globals = Globals
-                clsSigMap
-                (fromList $ zip (map name funDefs) funSigs)
+        let globals = Globals clsSigMap  (fromList
+                [(name fd, makeFunSig fd) | GlFunDef fd <- funDefs])
         unless (Data.Map.lookup "main" (functions globals)
                 == Just (FunSig (TPrim Int) []))
             $ throwError "No definition of global function: int main()"
         state (\s -> ((), CheckState globals (context s)))
+        -- check each function and class
         mapM_ check topDefs
         return ()
         where
@@ -103,25 +116,13 @@ instance Checkable Program where
                 tail <- checkClsExtTree (ok ++ checkedClss) rest
                 return $ currentCls : tail
 
-            clsNames :: [String]
-            clsNames = map name nonFunDefs
+            makeFunSig funDef = FunSig
+                (returnType funDef) (map argType (funArgs funDef))
 
-            makeFunSig :: FunDef -> Check FunSig
-            makeFunSig funDef = do
-                ensureUnique $ map argName (funArgs funDef)
-                let ret = returnType funDef
-                let args = map argType (funArgs funDef)
-                checkTypeGivenClsNames clsNames ret
-                mapM_ (checkTypeGivenClsNames clsNames) args
-                return $ FunSig ret args
-
-            makeClsSigItem :: ClsDefItem -> Check ClsSigItem
-            makeClsSigItem (AttrDef t pIdent _) = do
-                checkTypeGivenClsNames clsNames t
-                return $ Attr (name pIdent ) t
-            makeClsSigItem (MethDef funDef) = do
-                funSig <- makeFunSig funDef
-                return $ Method (name funDef) funSig
+            makeClsSigItem :: ClsDefItem -> ClsSigItem
+            makeClsSigItem (AttrDef t pIdent _) = Attr (name pIdent) t
+            makeClsSigItem (MethDef funDef) = Method (name funDef)
+                    (makeFunSig funDef)
 
             mergeClsSigItems :: [ClsSigItem] -> [ClsSigItem]
                 -> Check [ClsSigItem]
@@ -138,22 +139,41 @@ instance Checkable Program where
                 
             addClsSig :: Map String ClsSig -> TopDef
                 -> Check (Map String ClsSig)
-            addClsSig sigs (ClsDef clsIdent items) = do
-                ensureUnique $ map pIdent items
-                sigItems <- mapM makeClsSigItem items
-                return $ insert (name clsIdent)
-                    (ClsSig [name clsIdent] sigItems) sigs
+            addClsSig sigs (ClsDef clsIdent items) = return $ insert
+                    (name clsIdent)
+                    (ClsSig [name clsIdent] (map makeClsSigItem items)) sigs
             addClsSig sigs (ClsExtDef clsIdent superIdent items) = do
-                ensureUnique $ map pIdent items
                 let superSig = sigs ! name superIdent
-                allSigItems <- mapM makeClsSigItem items
+                let newSigItems = map makeClsSigItem items
                 sigItems <- catchError
-                    (mergeClsSigItems (clsItems superSig) allSigItems)
+                    (mergeClsSigItems (clsItems superSig) newSigItems)
                     (\e -> throwError $ printf "%s\n\tin class %s (line %d)"
                         e (name clsIdent) (lineNo clsIdent))
                 return $ insert (name clsIdent)
                     (ClsSig (name clsIdent:superNames superSig) sigItems) sigs
 
 instance Checkable TopDef where
+    check (GlFunDef funDef) = check funDef
+    check clsDef = do
+        ensureUnique $ map pIdent $ items clsDef
+        mapM_ checkItem $ items clsDef
+        return ()
+        where
+            checkItem (AttrDef t pIdent _) = checkNonVoidType pIdent t
+            checkItem (MethDef funDef) = check funDef
+
+instance Checkable FunDef where
+    check funDef = do
+        checkType $ returnType funDef
+        ensureUnique $ map pIdent (funArgs funDef)
+        mapM_ (checkNonVoidType (funName funDef) . argType) (funArgs funDef)
+        check $ body funDef
+        return ()
+
+instance Checkable Block where
+    check (Block stmts) = mapM_ check stmts
+
+instance Checkable Stmt where
     check _ = return () -- TODO
+
 
