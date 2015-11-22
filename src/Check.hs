@@ -117,15 +117,19 @@ definedType ident = do
             Nothing -> throwError $ printf
                 "Undefined %s (line %d)" n (lineNo ident)
 
-ensureAssignable :: Positioned p => p -> Type -> Type -> Check ()
-ensureAssignable p lhs rhs = do
+ensureAssignable :: Type -> Type -> Check ()
+ensureAssignable lhs rhs = do
     ok <- case (lhs, rhs) of
             (TObj lId, TObj rId) -> do
                 CheckState globals _ <- get
                 return $ elem (name lId)
-                    $ superNames $ (classes globals) ! (name rId)
+                    $ superNames $ classes globals ! name rId
             otherwise -> return $ lhs == rhs
-    unless ok $ throwError $ printf "Type mismatch (line %d)" (lineNo p)
+    unless ok $ throwError "Type mismatch"
+
+located :: Positioned p => p -> Check a -> Check a
+located p m = catchError m $
+    \e -> throwError $ printf "%s (line %d)" e (lineNo p)
 
 -- checkable
 
@@ -212,7 +216,7 @@ instance Checkable Type () where
 instance Checkable TopDef () where
     check (GlFunDef funDef) = do
         s <- get
-        let funSig = (functions $ globals s) ! (name funDef)
+        let funSig = functions (globals s) ! name funDef
         withContext (FunctionContext funSig []) $ check funDef
     check clsDef = do
         ensureUnique $ map pIdent $ items clsDef
@@ -222,7 +226,7 @@ instance Checkable TopDef () where
         checkItem (AttrDef t pIdent _) = check t
         checkItem (MethDef funDef) = do
             s <- get
-            let clsSig = (classes $ globals s) ! (name clsDef)
+            let clsSig = classes (globals s) ! name clsDef
             withContext (MethodContext clsSig (makeFunSig funDef) [])
                 $ check funDef
 
@@ -246,9 +250,9 @@ instance Checkable FunDef () where
         terminating (If _ ELitTrue s) = terminating s
         terminating (IfElse _ ELitTrue s _) = terminating s
         terminating (IfElse _ ELitFalse _ s) = terminating s
-        terminating (IfElse _ _ s1 s2) = (terminating s1) && (terminating s2)
+        terminating (IfElse _ _ s1 s2) = terminating s1 && terminating s2
         terminating (While _ ELitTrue s) = True
-        terminating (SExp (ECall ident []) _) = (name ident == "error")
+        terminating (SExp (ECall ident []) _) = name ident == "error"
         terminating _ = False
 
 instance Checkable Block () where
@@ -259,63 +263,68 @@ instance Checkable Stmt () where
     check (BStmt block) = check block
     check (Decl t items semiC) = do
         check t
-        sequence_ [define (pIdent i) t | i <- items]
-    check (Ass lv e semiC) = do
+        located semiC $ sequence_ [define (pIdent i) t | i <- items]
+    check (Ass lv e semiC) = located semiC $ do
         lt <- check lv
         et <- check e
-        ensureAssignable semiC lt et
-    check (Incr lv semiC) = do
+        ensureAssignable lt et
+    check (Incr lv semiC) = located semiC $ do
         lt <- check lv
-        unless (lt == TPrim Int) $ throwError $ printf
-            "Type mismatch in incrementation (line %d)" (lineNo semiC)
-    check (Decr lv semiC) = do
+        unless (lt == TPrim Int) $ throwError "Type mismatch in incrementation"
+    check (Decr lv semiC) = located semiC $ do
         lt <- check lv
-        unless (lt == TPrim Int) $ throwError $ printf
-            "Type mismatch in decrementation (line %d)" (lineNo semiC)
-    check (Ret e semiC) = do
+        unless (lt == TPrim Int) $ throwError "Type mismatch in decrementation"
+    check (Ret e semiC) = located semiC $ do
         et <- check e
         s <- get
         let FunSig rt _ = ctxFun $ context s
-        ensureAssignable semiC rt et
-    check (VRet semiC) = do
+        ensureAssignable rt et
+    check (VRet semiC) = located semiC $ do
         s <- get
         let FunSig rt _ = ctxFun $ context s
-        unless (rt == Void) $ throwError $ printf
-            "Type mismatch in return statement (line %d)" (lineNo semiC)
+        unless (rt == Void) $ throwError "Type mismatch in return statement"
     check (If tIf e s) = do
-        et <- check e
-        unless (et == TPrim Bool) $ throwError $ printf
-            "Type mismatch in if condition (line %d)" (lineNo tIf)
+        located tIf $ do
+            et <- check e
+            unless (et == TPrim Bool) $ throwError "Type mismatch in condition"
         check s
     check (IfElse tIf e s1 s2) = do
-        et <- check e
-        unless (et == TPrim Bool) $ throwError $ printf
-            "Type mismatch in if condition (line %d)" (lineNo tIf)
+        located tIf $ do
+            et <- check e
+            unless (et == TPrim Bool) $ throwError "Type mismatch in condition"
         check s1
         check s2
     check (While tWhile e s) = do
-        et <- check e
-        unless (et == TPrim Bool) $ throwError $ printf
-            "Type mismatch in while condition (line %d)" (lineNo tWhile)
+        located tWhile $ do
+            et <- check e
+            unless (et == TPrim Bool) $ throwError "Type mismatch in condition"
         check s
     check (For tFor t ident e s) = do
         check t
-        et <- check e
-        at <- case et of
-            TPrimArr p -> return $ TPrim p
-            TObjArr i -> return $ TObj i
-            otherwise -> throwError $ printf
-                "Iterating a non-array value (line %d)" (lineNo tFor)
-        ensureAssignable tFor t at
+        located tFor $ do
+            et <- check e
+            at <- case et of
+                TPrimArr p -> return $ TPrim p
+                TObjArr i -> return $ TObj i
+                otherwise -> throwError "Iterating a non-array value"
+            ensureAssignable t at
         withPushedScope empty $ do
             define ident t
             check s
-    check (SExp e _) = do
-        check e
+    check (SExp e semiC) = do
+        located semiC $ check e
         return ()
 
 instance Checkable LVal Type where
-    check _ = return Void -- TODO
+    check (LVar ident) = definedType ident
+    check (LArr arrE ixE) = do
+        ixT <- check ixE
+        unless (ixT == TPrim Int) $ throwError "Array index must be an integer"
+        arrT <- check arrE
+        case arrT of
+            TPrimArr p -> return $ TPrim p
+            TObjArr i -> return $ TObj i
+            otherwise -> throwError "Indexing a non-array value"
 
 instance Checkable Item Type where
     check _ = return Void -- TODO
