@@ -1,10 +1,14 @@
-module Types (ClsSig(..), ClsSigItem(..), FunSig(..), Globals(..)) where
+module Types where
 
 import Data.Map (Map)
 
 import Parser.AbsLatte
 
 data FunSig = FunSig Type [Type] deriving (Show, Eq)
+
+makeFunSig :: FunDef -> FunSig
+makeFunSig funDef = FunSig
+    (returnType funDef) (map argType (funArgs funDef))
 
 data ClsSig = ClsSig
     { superNames :: [String]
