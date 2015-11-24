@@ -6,8 +6,12 @@ module Parser.AbsLatte where
 newtype TIf = TIf ((Int,Int),String) deriving (Eq,Ord,Show)
 newtype TWhile = TWhile ((Int,Int),String) deriving (Eq,Ord,Show)
 newtype TFor = TFor ((Int,Int),String) deriving (Eq,Ord,Show)
-newtype PIdent = PIdent ((Int,Int),String) deriving (Eq,Ord,Show)
+newtype PIdent = PIdent ((Int,Int),String) deriving (Ord,Show)
 newtype SemiC = SemiC ((Int,Int),String) deriving (Eq,Ord,Show)
+
+instance Eq PIdent where
+    id1 == id2 = (name id1 == name id2)
+
 data Program =
    Program [TopDef]
   deriving (Eq,Ord,Show)
