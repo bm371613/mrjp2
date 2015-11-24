@@ -34,13 +34,6 @@ data Context =
 setScopes scopes (FunctionContext f _) = FunctionContext f scopes
 setScopes scopes (MethodContext c f _) = MethodContext c f scopes
 
-definedByContext :: Context -> String -> Maybe Type
-definedByContext (MethodContext (ClsSig _ items) _ _) n =
-    case find (\i -> name i == n) items of
-        Just (Attr _ t) -> Just t
-        otherwise -> Nothing
-definedByContext _ _ = Nothing
-
 data CheckState = CheckState
     { globals :: Globals
     , context :: Context
@@ -100,22 +93,10 @@ define ident t = do
     let (scope:scopes) = ctxScopes c
     let n = name ident
     when (member n scope) $ throwError $ printf
-        "%s is already defined in this scope (line %d)" n (lineNo ident)
+        "%s is already defined in this scope" n
     let newScope = insert n t scope
     put $ CheckState globals (setScopes (newScope:scopes) c)
     return ()
-
-definedType :: PIdent -> Check Type
-definedType ident = do
-    CheckState globals c <- get
-    let scopes = ctxScopes c
-    let n = name ident
-    case find (member n) scopes of
-        Just scope -> return $ scope ! n
-        Nothing -> case definedByContext c n of
-            Just t -> return t
-            Nothing -> throwError $ printf
-                "Undefined %s (line %d)" n (lineNo ident)
 
 ensureAssignable :: Type -> Type -> Check ()
 ensureAssignable lhs rhs = do
@@ -216,7 +197,7 @@ instance Checkable Type () where
     check (TObj pIdent) = let clsName = name pIdent in do
         s <- get
         unless (member clsName $ classes $ globals s) $ throwError $ printf
-            "Undefined: %s (line %d)" clsName (lineNo pIdent)
+            "Undefined: %s" clsName
     check (TPrimArr p) = return ()
     check (TObjArr clsIdent) = check (TObj clsIdent)
 
@@ -230,7 +211,7 @@ instance Checkable TopDef () where
         mapM_ checkItem $ items clsDef
         return ()
         where
-        checkItem (AttrDef t pIdent _) = check t
+        checkItem (AttrDef t ident _) = located ident $ check t
         checkItem (MethDef funDef) = do
             s <- get
             let clsSig = classes (globals s) ! name clsDef
@@ -239,9 +220,10 @@ instance Checkable TopDef () where
 
 instance Checkable FunDef () where
     check funDef = do
-        check $ returnType funDef
         ensureUnique $ map pIdent (funArgs funDef)
-        mapM_ (check . argType) (funArgs funDef)
+        located funDef $ do
+                check $ returnType funDef
+                mapM_ (check . argType) (funArgs funDef)
         let argsScope = fromList [(name id, t) | Arg t id <- funArgs funDef]
         withPushedScope argsScope $ check $ body funDef
         let (Block stmts) = body funDef
@@ -268,11 +250,11 @@ instance Checkable Block () where
 instance Checkable Stmt () where
     check (Empty _) = return ()
     check (BStmt block) = check block
-    check (Decl t items semiC) = do
+    check (Decl t items semiC) = located semiC $ do
         check t
         sequence_ [do
             case i of
-                Init _ e -> located semiC $ do
+                Init _ e -> do
                     et <- check e
                     ensureAssignable t et
                 NoInit _ -> return ()
@@ -314,8 +296,8 @@ instance Checkable Stmt () where
             unless (et == TPrim Bool) $ throwError "Type mismatch in condition"
         check s
     check (For tFor t ident e s) = do
-        check t
         located tFor $ do
+            check t
             et <- check e
             at <- case et of
                 TPrimArr p -> return $ TPrim p
@@ -323,14 +305,28 @@ instance Checkable Stmt () where
                 otherwise -> throwError "Iterating a non-array value"
             ensureAssignable t at
         withPushedScope empty $ do
-            define ident t
+            located ident $ define ident t
             check s
     check (SExp e semiC) = do
         located semiC $ check e
         return ()
 
 instance Checkable LVal Type where
-    check (LVar ident) = definedType ident
+    check (LVar ident) = do
+        CheckState globals c <- get
+        let scopes = ctxScopes c
+        let n = name ident
+        case find (member n) scopes of
+            Just scope -> return $ scope ! n
+            Nothing -> case definedByContext c n of
+                Just t -> return t
+                Nothing -> throwError $ printf "Undefined %s" n
+        where
+        definedByContext (MethodContext (ClsSig _ items) _ _) n =
+            case find (\i -> name i == n) items of
+                Just (Attr _ t) -> Just t
+                otherwise -> Nothing
+        definedByContext _ _ = Nothing
     check (LArr arrE ixE) = do
         ixT <- check ixE
         unless (ixT == TPrim Int) $ throwError "Array index must be an integer"
