@@ -144,7 +144,7 @@ instance Checkable Program () where
         -- put signatures of functions and classes to state
         topoClsOrder <- checkClsExtTree clsDefs clsExtDefs
         clsSigMap <- foldM addClsSig empty topoClsOrder
-        let globals = Globals clsSigMap  (fromList
+        let globals = Globals clsSigMap  (fromList $ builtins ++
                 [(name fd, makeFunSig fd) | GlFunDef fd <- funDefs])
         unless (Data.Map.lookup "main" (functions globals)
                 == Just (FunSig (TPrim Int) []))
@@ -154,6 +154,12 @@ instance Checkable Program () where
         mapM_ check topDefs
         return ()
         where
+        builtins = [
+            ("printInt", FunSig Void [TPrim Int]),
+            ("printString", FunSig Void [TPrim Str]),
+            ("error", FunSig Void []),
+            ("readInt", FunSig (TPrim Int) []),
+            ("readString", FunSig (TPrim Str) [])]
         isFunDef (GlFunDef _) = True
         isFunDef _ = False
         hasSuper (ClsExtDef {}) = True
@@ -333,7 +339,125 @@ instance Checkable LVal Type where
             TPrimArr p -> return $ TPrim p
             TObjArr i -> return $ TObj i
             otherwise -> throwError "Indexing a non-array value"
+    check (LAttr e ident) = do
+        objT <- check e
+        case objT of
+            TObj clsIdent -> do
+                s <- get
+                handleObject $ classes (globals s) ! name clsIdent
+            TPrimArr p -> handleArray $ TPrim p
+            TObjArr i -> handleArray $ TObj i
+            otherwise -> throwError "Attribute access on non-object"
+        where
+        handleObject clsSig =
+            case find (\i -> name i == name ident) $ clsItems clsSig of
+                Just (Attr _ t) -> return t
+                otherwise -> throwError $ printf
+                    "No attribute: %s" (name ident)
+        handleArray t =
+            if name ident == "length"
+                then return t
+                else throwError "Arrays have only length attribute"
+
+checkBinOp :: Primitive -> Primitive -> Expr -> Expr -> String -> Check Type
+checkBinOp argP retP arg1 arg2 opName = do
+    t1 <- check arg1
+    t2 <- check arg2
+    let argT = TPrim argP
+    unless (t1 == argT && t2 == argT) $ throwError $ printf
+            "Type mismatch in %s operation" opName
+    return $ TPrim retP
 
 instance Checkable Expr Type where
-    check _ = return Void -- TODO
+    check (ELitInt _) = return $ TPrim Int
+    check (EString _) = return $ TPrim Str
+    check ELitTrue = return $ TPrim Bool
+    check ELitFalse = return $ TPrim Bool
+    check ENull = return BaseObject
+    check ESelf = do
+        s <- get
+        case context s of
+            MethodContext clsSig _ _ ->
+                return $ TObj $ mkId $ head $ superNames clsSig
+            otherwise -> throwError "self outside of a method"
+    check (ELVal lVal) = check lVal
+    check (ECall ident args) = do
+        argTs <- mapM check args
+        s <- get
+        funSig <- case Data.Map.lookup (name ident) (functions $ globals s) of
+            Just fs -> return fs
+            Nothing -> throwError $ printf "No function: %s" (name ident)
+        let sigArgTs = funSigArgTs funSig
+        unless (length argTs == length sigArgTs) $ throwError
+            "Bad number of arguments in function call"
+        mapM_ (uncurry ensureAssignable) (zip sigArgTs argTs)
+        return $ funSigRetT funSig
+    check (EMethCall e ident args) = do
+        objT <- check e
+        clsSig <- case objT of
+            TObj clsIdent -> do
+                s <- get
+                return $ classes (globals s) ! name clsIdent
+            otherwise -> throwError "Method call on non-object"
+        funSig <- case find (\i -> name i == name ident) $ clsItems clsSig of
+            Just (Method _ fs) -> return fs
+            otherwise -> throwError $ printf "No method: %s" (name ident)
+        argTs <- mapM check args
+        let sigArgTs = funSigArgTs funSig
+        unless (length argTs == length sigArgTs) $ throwError
+            "Bad number of arguments in method call"
+        mapM_ (uncurry ensureAssignable) (zip sigArgTs argTs)
+        return $ funSigRetT funSig
+    check (ENewObj ident) = let r = TObj ident in do
+        check r
+        return r
+    check (ENewArr t e) = do
+        check t
+        let r = case t of
+                TPrim p -> TPrimArr p
+                TObj i -> TObjArr i
+        sizeT <- check e
+        case sizeT of
+                TPrim Int -> return r
+                otherwise -> throwError "Array size must be an integer"
+    check (ENullCast ident) = let r = TObj ident in do
+        check r
+        return r
+    check (Neg e) = do
+        t <- check e
+        unless (t == TPrim Int) $ throwError
+                "Arithmetic operation on non-integer"
+        return t
+    check (Not e) = do
+        t <- check e
+        unless (t == TPrim Bool) $ throwError
+                "Logical operation on non-bool"
+        return t
+    check (EMul e1 op e2) = checkBinOp Int Int e1 e2 $ show op
+    check (EAdd e1 Plus e2) = do
+        t1 <- check e1
+        t2 <- check e2
+        unless (t1 == t2 && (t1 == TPrim Int || t1 == TPrim Str)) $ throwError
+                "Type mismatch in Plus operation"
+        return t1
+    check (EAdd e1 Minus e2) = checkBinOp Int Int e1 e2 $ show Minus
+    check (ERel e1 op e2) = case op of
+        EQU -> handleEq
+        NE -> handleEq
+        otherwise -> checkBinOp Int Bool e1 e2 $ show op
+        where
+        isPrimitive (TPrim _) = True
+        isPrimitive _ = False
+
+        handleEq = do
+            t1 <- check e1
+            t2 <- check e2
+            let ok = if isPrimitive t1
+                then t1 == t2
+                else not $ isPrimitive t2
+            unless ok $ throwError $ printf
+                    "Type mismatch in %s operation" (show op)
+            return $ TPrim Bool
+    check (EAnd e1 e2) = checkBinOp Bool Bool e1 e2 "And"
+    check (EOr e1 e2) = checkBinOp Bool Bool e1 e2 "Or"
 

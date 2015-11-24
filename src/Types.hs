@@ -4,7 +4,10 @@ import Data.Map (Map)
 
 import Parser.AbsLatte
 
-data FunSig = FunSig Type [Type] deriving (Show, Eq)
+data FunSig = FunSig
+    { funSigRetT :: Type
+    , funSigArgTs :: [Type]
+    } deriving (Show, Eq)
 
 makeFunSig :: FunDef -> FunSig
 makeFunSig funDef = FunSig
@@ -14,6 +17,7 @@ data ClsSig = ClsSig
     { superNames :: [String]
     , clsItems ::[ClsSigItem]
     } deriving (Show)
+
 data ClsSigItem = Attr String Type | Method String FunSig deriving (Show)
 
 data Globals = Globals

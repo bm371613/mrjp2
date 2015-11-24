@@ -132,6 +132,9 @@ data RelOp =
 
 -- helpers
 
+mkId :: String -> PIdent
+mkId s = PIdent ((-1, -1), s)
+
 class Named a where
     name :: a -> String
 
