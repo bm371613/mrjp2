@@ -120,6 +120,11 @@ class Checkable a t | a -> t where
 
 instance Checkable Program () where
     check (Program topDefs) = do
+        -- ensure builtinss are not redefined
+        let builtinNames = map fst builtins
+        mapM_ ((\id -> when (name id `elem` builtinNames) $ throwError $ printf
+                "%s is a built-in (line %d)" (name id) (lineNo id)
+            ) . pIdent ) topDefs
         -- ensure top defs have unique identifiers
         ensureUnique $ map pIdent topDefs
         -- put signatures of functions and classes to state
