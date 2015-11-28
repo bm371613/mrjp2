@@ -4,6 +4,7 @@ import System.Exit (exitFailure)
 import System.IO (hPutStrLn, stderr)
 
 import Check
+import Emit
 import Parser.AbsLatte
 import Parser.LexLatte
 import Parser.ParLatte
@@ -27,6 +28,4 @@ main = do
             hPutStrLn stderr error
             exitFailure
         Right globals -> return globals
-    hPutStrLn stderr $ show globals -- fixme
-    return ()
-
+    emitProgramGivenGlobals program globals

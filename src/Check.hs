@@ -85,7 +85,6 @@ withPushedScope s m = do
     result <- m
     put $ CheckState globals c
     return result
-    where
 
 define :: PIdent -> Type -> Check ()
 define ident t = do
