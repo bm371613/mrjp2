@@ -304,7 +304,17 @@ instance Emitable Stmt () where
         emit $ Label elseL
         emit s2
         emit $ Label endL
-    emit (While _ e s) = return () -- TODO
+    emit (While _ e s) = do
+        bodyL <- mkLabel
+        condL <- mkLabel
+        emit $ Jump condL
+        emit $ Label bodyL
+        emit s
+        emit $ Label condL
+        emit e
+        emit $ Pop "eax"
+        emitBuf "    cmp eax,1"
+        emitBuf $ printf "    je %s" bodyL
     emit (For _ t ident e s) = return () -- TODO
     emit (SExp e _) = do
         t <- emit e
@@ -383,4 +393,16 @@ instance Emitable Expr Type where
             0 -> return ()
             4 -> emit $ Push "eax"
         return retType
+    emit (EMethCall e ident args) = return Void -- TODO
+    emit (ENewObj ident) = return Void -- TODO
+    emit (ENewArr t e) = return Void -- TODO
+    emit (ENullCast ident) = return Void -- TODO
+    emit (Neg e) = do
+        t <- emit e
+        emitBuf $ "    neg dword [esp]"
+        return t
+    emit (Not e) = do
+        t <- emit e
+        emitBuf $ "    xor dword [esp], 1"
+        return t
     emit _ = return Void -- TODO
