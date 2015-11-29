@@ -30,6 +30,7 @@ data Context = Context
 setScopes s (Context c f _ o ls nl) = Context c f s o ls nl
 setOutBuf o (Context c f s _ ls nl) = Context c f s o ls nl
 setLocalsSize ls (Context c f s o _ nl) = Context c f s o ls nl
+setNextLabel nl (Context c f s o ls _) = Context c f s o ls nl
 
 data EmitState = EmitState
     { globals :: Globals
@@ -115,6 +116,14 @@ itemOffset offset (it:its) n =
 mkFnLabel :: String -> String
 mkFnLabel f = printf "g_%s" f
 
+mkLabel :: Emit String
+mkLabel = do
+    c <- getContext
+    prefix <- mkPrologLabel
+    let labelIx = ctxNextLabel c
+    setContext $ setNextLabel (labelIx + 1) c
+    return $ printf "%s___%d" prefix labelIx
+
 mkMthdLabel :: String -> String -> String
 mkMthdLabel c f = printf "m_%s___%s" c f
 
@@ -128,7 +137,7 @@ mkPrologLabel  = do
 mkEpilogLabel :: Emit String
 mkEpilogLabel = do
     l <- mkPrologLabel
-    return $ printf "e%s" l
+    return $ printf "%s___epilog" l
 
 typeSize :: Type -> Int
 typeSize Void = 0
@@ -275,8 +284,26 @@ instance Emitable Stmt () where
         emit $ Pop "eax"
         mkEpilogLabel >>= (emit . Jump)
     emit (VRet _) = mkEpilogLabel >>= (emit . Jump)
-    emit (If _ e s) = return () -- TODO
-    emit (IfElse _ e s1 s2) = return () -- TODO
+    emit (If _ e s) = do
+        endL <- mkLabel
+        emit e
+        emit $ Pop "eax"
+        emitBuf "    cmp eax,1"
+        emitBuf $ printf "    jne %s" endL
+        emit s
+        emit $ Label endL
+    emit (IfElse _ e s1 s2) = do
+        elseL <- mkLabel
+        endL <- mkLabel
+        emit e
+        emit $ Pop "eax"
+        emitBuf "    cmp eax,1"
+        emitBuf $ printf "    jne %s" elseL
+        emit s1
+        emit $ Jump endL
+        emit $ Label elseL
+        emit s2
+        emit $ Label endL
     emit (While _ e s) = return () -- TODO
     emit (For _ t ident e s) = return () -- TODO
     emit (SExp e _) = do
