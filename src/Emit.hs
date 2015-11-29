@@ -62,12 +62,10 @@ itemOffset offset (it:its) n =
             itemSize (Method _ _) = 4
 
 sizeIndicator :: Int -> String
-sizeIndicator 1 = "byte"
 sizeIndicator 4 = "dword"
 
 typeSize :: Type -> Int
 typeSize Void = 0
-typeSize (TPrim Bool) = 1
 typeSize _ = 4
 
 withPushedScope :: Scope -> Emit a -> Emit a
@@ -246,21 +244,24 @@ instance Emitable Expr Type where
                 let ix = length l
                 put $ EmitState g (l ++ [s]) c
                 return ix
-        emit (printf "    push l_%d" ix :: String)
+        emit (printf "    lea eax, [l_%d]" ix :: String)
+        emit "    push eax"
         return $ TPrim Str
-    emit ELitTrue = do
-        emit "    push byte 1"
-        return $ TPrim Bool
-    emit ELitFalse = do
-        emit "    push byte 0"
-        return $ TPrim Bool
-    emit ENull = do
-        emit "    push dword 0"
-        return BaseObject
+    emit ELitTrue = let t = TPrim Bool in do
+        emit (printf "    push %s 1" (sizeIndicator $ typeSize t) :: String)
+        return t
+    emit ELitFalse = let t = TPrim Bool in do
+        emit (printf "    push %s 0" (sizeIndicator $ typeSize t) :: String)
+        return t
+    emit ENull = let t = BaseObject in do
+        emit (printf "    push %s 0" (sizeIndicator $ typeSize t) :: String)
+        return t
     emit ESelf = do
-        emit "    push dword [bsp + 8]"
         s <- get
-        return $ TObj $ mkId $ ctxClsName $ context s
+        let t = TObj $ mkId $ ctxClsName $ context s
+        emit (printf "    push %s [bsp+8]" (sizeIndicator $ typeSize t)
+                :: String)
+        return t
     emit (ELVal lVal) = do
         t <- emit lVal
         emit "    pop eax"
