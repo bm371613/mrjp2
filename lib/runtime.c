@@ -13,7 +13,7 @@ void g_printString(char * s) {
 }
 
 void g_error() {
-    printf("runtime error");
+    printf("runtime error\n");
     exit(1);
 }
 
@@ -30,7 +30,7 @@ char * g_readString() {
 }
 
 char * i_concat(char * s1, char * s2) {
-    char * r = malloc(strlen(s1) + strlen(s2));
+    char * r = malloc(strlen(s1) + strlen(s2) + 1);
     strcpy(r, s1);
     strcat(r, s2);
     return r;

@@ -464,5 +464,21 @@ instance Emitable Expr Type where
         jmpInstr GE = "jge"
         jmpInstr EQU = "je"
         jmpInstr NE = "jne"
-
-    emit _ = return Void -- TODO
+    emit (EAnd e1 e2) = do
+        l <- mkLabel
+        t <- emit e1
+        emitBuf $ "    cmp dword [esp], 0"
+        emitBuf $ printf "    je %s" l
+        emitBuf "    add esp, 4"
+        emit e2
+        emit $ Label l
+        return t
+    emit (EOr e1 e2) = do
+        l <- mkLabel
+        t <- emit e1
+        emitBuf $ "    cmp dword [esp], 1"
+        emitBuf $ printf "    je %s" l
+        emitBuf "    add esp, 4"
+        emit e2
+        emit $ Label l
+        return t
