@@ -262,8 +262,14 @@ instance Emitable Stmt () where
         emit $ Pop "eax"
         emit $ Pop "edx"
         emitBuf "    mov [edx], eax"
-    emit (Incr lv _) = return () -- TODO
-    emit (Decr lv _) = return () -- TODO
+    emit (Incr lv _) = do
+        emit lv
+        emit $ Pop "eax"
+        emitBuf "    inc dword [eax]"
+    emit (Decr lv _) = do
+        emit lv
+        emit $ Pop "eax"
+        emitBuf "    dec dword [eax]"
     emit (Ret e _) = do
         emit e
         emit $ Pop "eax"
@@ -276,7 +282,7 @@ instance Emitable Stmt () where
     emit (SExp e _) = do
         t <- emit e
         let ts = typeSize t
-        unless (ts == 0) $ emitBuf $ (printf "    add esp, %d" ts :: String)
+        unless (ts == 0) $ emitBuf $ printf "    add esp, %d" ts
 
 instance Emitable LVal Type where
     emit (LVar ident) = do
