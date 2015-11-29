@@ -14,11 +14,13 @@ import Types
 
 type Scope = Map String (Type, Int)
 
+data Emited = Line String | Push String | Pop String  deriving (Show)
+
 data Context = Context
     { ctxClsName :: Maybe String
     , ctxFunName :: String
     , ctxScopes :: [Scope]
-    , ctxOutBuf :: [String]
+    , ctxOutBuf :: [Emited]
     , ctxLocalsSize :: Int
     , ctxNextLabel :: Int
     } deriving (Show)
@@ -44,6 +46,13 @@ emitProgramGivenGlobals :: Program -> Globals -> IO ()
 emitProgramGivenGlobals p g = runEmitMonad (emit p) $ EmitState g [] Nothing
 
 -- helpers
+emitBuf :: String -> Emit ()
+emitBuf str = do
+    c <- getContext
+    setContext $ setOutBuf (ctxOutBuf c ++ [Line str]) c
+
+emitUnBuf :: String -> Emit ()
+emitUnBuf str = liftIO $ putStrLn str
 
 flush :: Emit ()
 flush = do
@@ -51,8 +60,22 @@ flush = do
     case c of
         Nothing -> return ()
         Just c -> do
-            mapM_ (liftIO . putStrLn) (ctxOutBuf c)
+            mapM_ (liftIO . printOut) (optimize $ ctxOutBuf c)
             setContext $ setOutBuf [] c
+    where
+    printOut (Line str) = putStrLn str
+    printOut (Push str) = putStrLn $ printf "    push %s" str
+    printOut (Pop str) = putStrLn $ printf "    pop %s" str
+
+    cancelling (Push s1) (Pop s2) = s1 == s2
+    cancelling (Pop s1) (Push s2) = s1 == s2
+    cancelling _ _ = False
+   
+    optimize [] = []
+    optimize (emited:[]) = [emited]
+    optimize (e1:e2:es) = if cancelling e1 e2
+        then es
+        else e1:(optimize (e2:es))
 
 getMaybeContext :: Emit (Maybe Context)
 getMaybeContext = do
@@ -129,33 +152,32 @@ withContext c m = do
 class Emitable a t | a -> t where
     emit :: a -> Emit t
 
-instance Emitable String () where
-    emit str = do
-        EmitState g l c <- get
-        case c of
-            Nothing -> liftIO $ putStrLn str
-            Just c -> setContext $ setOutBuf (ctxOutBuf c ++ [str]) c
+instance Emitable Emited () where
+    emit e = do
+        c <- getContext
+        setContext $ setOutBuf (ctxOutBuf c ++ [e]) c
 
 instance Emitable Program () where
     emit (Program topDefs) = do
-        emit "global main"
-        emit "\n"
-        emit "section .text"
-        emit "extern g_printInt,g_printString,g_error,g_readInt,g_readString"
-        emit "extern i_concat" -- TODO
-        emit "\n"
+        emitUnBuf "global main"
+        emitUnBuf "\n"
+        emitUnBuf "section .text"
+        emitUnBuf
+            "extern g_printInt,g_printString,g_error,g_readInt,g_readString"
+        emitUnBuf "extern i_concat" -- TODO
+        emitUnBuf "\n"
 
         mapM_ emit topDefs
 
-        emit "section .data"
+        emitUnBuf "section .data"
 
         s <- get
         mapM_ emitLit (zip [0..] $ literals s)
 
         where
         emitLit :: (Int, String) -> Emit ()
-        emitLit (ix, l) = emit (printf "l_%d db %s"
-            ix (intercalate "," $ map (show . ord) $ l ++ "\0") :: String)
+        emitLit (ix, l) = emitUnBuf $ printf "l_%d db %s"
+            ix (intercalate "," $ map (show . ord) $ l ++ "\0")
 
 instance Emitable TopDef () where
     emit (GlFunDef funDef) = do
@@ -167,24 +189,21 @@ instance Emitable TopDef () where
                     (map (\(Arg t _) -> t) args)
                     (scanl (\ls -> \(Arg t _) -> typeSize t + ls) 8 args)
         withContext (Context Nothing n [args_scope] [] 0 0) $ do
-            when (n == "main") $ emit "main:"
-            prologLabel <- mkPrologLabel
-            emit (printf "%s:" prologLabel :: String)
-            emit "    push ebp"
-            emit "    mov ebp, esp"
+            when (n == "main") $ emitUnBuf "main:"
+            mkPrologLabel >>= (\l -> emitUnBuf $ printf "%s:" l)
+            emitUnBuf "    push ebp"
+            emitUnBuf "    mov ebp, esp"
             emit (body funDef)
             c <- getContext
             let ls = ctxLocalsSize c
             -- TODO memset locals to 0
-            when (ls > 0) $ liftIO $ putStrLn $ printf "    sub esp, %d" ls
+            when (ls > 0) $ emitUnBuf $ printf "    sub esp, %d" ls
             flush
-            when (ls > 0) $ liftIO $ putStrLn $ printf "    add esp, %d" ls
-            epilogLabel <- mkEpilogLabel
-            emit (printf "%s:" epilogLabel :: String)
-            emit "    pop ebp"
-            emit "    ret"
-            emit "\n"
-            flush
+            mkEpilogLabel >>= (\l -> emitUnBuf $ printf "%s:" l)
+            when (ls > 0) $ emitUnBuf $ printf "    add esp, %d" ls
+            emitUnBuf "    pop ebp"
+            emitUnBuf "    ret"
+            emitUnBuf "\n"
     emit clsDef = mapM_ checkItem $ items clsDef
         where
         checkItem (AttrDef _ _ _) = return ()
@@ -198,23 +217,20 @@ instance Emitable TopDef () where
                         (scanl (\ls -> \(Arg t _) -> typeSize t + ls) 12 args)
             withContext (Context
                     (Just $ name clsDef) n [args_scope] [] 0 0) $ do
-                prologLabel <- mkPrologLabel
-                emit (printf "%s:" prologLabel :: String)
-                emit "    push ebp"
-                emit "    mov ebp, esp"
+                mkPrologLabel >>= (\l -> emitUnBuf $ printf "%s:" l)
+                emitUnBuf "    push ebp"
+                emitUnBuf "    mov ebp, esp"
                 emit (body funDef)
                 c <- getContext
                 let ls = ctxLocalsSize c
                 -- TODO memset locals to 0
-                when (ls > 0) $ liftIO $ putStrLn $ printf "    sub esp, %d" ls
+                when (ls > 0) $ emitUnBuf $ printf "    sub esp, %d" ls
                 flush
-                when (ls > 0) $ liftIO $ putStrLn $ printf "    add esp, %d" ls
-                epilogLabel <- mkEpilogLabel
-                emit (printf "%s:" epilogLabel :: String)
-                emit "    pop ebp"
-                emit "    ret"
-                emit "\n"
-                flush
+                mkEpilogLabel >>= (\l -> emitUnBuf $ printf "%s:" l)
+                when (ls > 0) $ emitUnBuf $ printf "    add esp, %d" ls
+                emitUnBuf "    pop ebp"
+                emitUnBuf "    ret"
+                emitUnBuf "\n"
 
 instance Emitable Block () where
     emit (Block stmts) = withPushedScope empty $ mapM_ emit stmts
@@ -235,17 +251,22 @@ instance Emitable Stmt () where
             let nsc = insert n (t, -nls) sc
             let newContext = setScopes (nsc:scs) $ setLocalsSize nls oldContext
             setContext newContext
-    emit (Ass lv e _) = return () -- TODO
+    emit (Ass lv e _) = do
+        emit lv
+        emit e
+        emit $ Pop "eax"
+        emit $ Pop "edx"
+        emitBuf "    mov [edx], eax"
     emit (Incr lv _) = return () -- TODO
     emit (Decr lv _) = return () -- TODO
     emit (Ret e _) = do
         l <- mkEpilogLabel
         emit e
-        emit "    pop eax"
-        emit (printf "    jmp %s" l :: String)
+        emit $ Pop "eax"
+        emitBuf (printf "    jmp %s" l :: String)
     emit (VRet _) = do
         l <- mkEpilogLabel
-        emit (printf "    jmp %s" l :: String)
+        emitBuf (printf "    jmp %s" l :: String)
     emit (If _ e s) = return () -- TODO
     emit (IfElse _ e s1 s2) = return () -- TODO
     emit (While _ e s) = return () -- TODO
@@ -253,7 +274,7 @@ instance Emitable Stmt () where
     emit (SExp e _) = do
         t <- emit e
         let ts = typeSize t
-        unless (ts == 0) $ emit $ (printf "    add esp, %d" ts :: String)
+        unless (ts == 0) $ emitBuf $ (printf "    add esp, %d" ts :: String)
 
 instance Emitable LVal Type where
     emit (LVar ident) = do
@@ -262,10 +283,10 @@ instance Emitable LVal Type where
         let n = name ident
         case find (member n) scopes of
             Just scope -> let (t, addr) = scope ! n in do
-                emit (if addr >= 0
+                emitBuf (if addr >= 0
                     then printf "    lea eax, [ebp+%d]" addr
-                    else printf "    lea eax, [ebp%d]" addr :: String)
-                emit $ "    push eax"
+                    else printf "    lea eax, [ebp%d]" addr)
+                emit $ Push "eax"
                 return t
             Nothing -> do
                 s <- get
@@ -273,17 +294,17 @@ instance Emitable LVal Type where
                         ! (fromJust $ ctxClsName c)
                 let items = clsItems clsSig
                 let offset = itemOffset 0 items n
-                emit "    lea eax, [bsp+8]"
-                emit "    mov eax, [eax]"
-                emit (printf "    add eax, %d" offset :: String)
-                emit "    push eax"
+                emitBuf "    lea eax, [bsp+8]"
+                emitBuf "    mov eax, [eax]"
+                emitBuf $ printf "    add eax, %d" offset
+                emit $ Push "eax"
                 let (Just (Attr _ t)) = find (((==) n) . name) items
                 return t
     emit _ = return Void -- TODO
 
 instance Emitable Expr Type where
     emit (ELitInt i) = do
-        emit (printf "    push %d" i :: String)
+        emitBuf $ printf "    push %d" i
         return $ TPrim Int
     emit (EString s) = do
         EmitState g l c <- get
@@ -293,38 +314,38 @@ instance Emitable Expr Type where
                 let ix = length l
                 put $ EmitState g (l ++ [s]) c
                 return ix
-        emit (printf "    lea eax, [l_%d]" ix :: String)
-        emit "    push eax"
+        emitBuf $ printf "    lea eax, [l_%d]" ix
+        emit $ Push "eax"
         return $ TPrim Str
     emit ELitTrue = let t = TPrim Bool in do
-        emit "    push 1"
+        emitBuf "    push 1"
         return t
     emit ELitFalse = let t = TPrim Bool in do
-        emit "    push 0"
+        emitBuf "    push 0"
         return t
     emit ENull = let t = BaseObject in do
-        emit "    push 0"
+        emitBuf "    push 0"
         return t
     emit ESelf = do
         c <- getContext
         let t = TObj $ mkId $ fromJust $ ctxClsName c
-        emit "    push dword [bsp+8]"
+        emitBuf "    push dword [bsp+8]"
         return t
     emit (ELVal lVal) = do
         t <- emit lVal
-        emit "    pop eax"
-        emit "    push dword [eax]"
+        emit $ Pop "eax"
+        emitBuf "    push dword [eax]"
         return t
     emit (ECall ident args) = do
         argTypes <- mapM emit (reverse args)
-        emit (printf "    call %s" (mkFnLabel $ name ident) :: String)
+        emitBuf $ printf"    call %s" (mkFnLabel $ name ident)
         let argsSize = sum $ map typeSize argTypes
         unless (argsSize == 0)
-                $ emit (printf "    add esp, %d" argsSize :: String)
+                $ emitBuf $ printf "    add esp, %d" argsSize
         s <- get
         let retType = funSigRetT $ (functions $ globals s) ! (name ident)
         case typeSize retType of
             0 -> return ()
-            4 -> emit "    push eax"
+            4 -> emit $ Push "eax"
         return retType
     emit _ = return Void -- TODO
