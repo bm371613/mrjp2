@@ -14,7 +14,9 @@ import Types
 
 type Scope = Map String (Type, Int)
 
-data Emited = Line String | Push String | Pop String  deriving (Show)
+data Emited = Line String
+    | Push String | Pop String
+    | Label String | Jump String deriving (Show)
 
 data Context = Context
     { ctxClsName :: Maybe String
@@ -66,16 +68,19 @@ flush = do
     printOut (Line str) = putStrLn str
     printOut (Push str) = putStrLn $ printf "    push %s" str
     printOut (Pop str) = putStrLn $ printf "    pop %s" str
+    printOut (Label l) = putStrLn $ printf "%s:" l
+    printOut (Jump l) = putStrLn $ printf "    jmp %s" l
 
-    cancelling (Push s1) (Pop s2) = s1 == s2
-    cancelling (Pop s1) (Push s2) = s1 == s2
-    cancelling _ _ = False
+    cancel f@(Push s1) s@(Pop s2) = if s1 == s2 then ([], []) else ([f], [s])
+    cancel f@(Pop s1) s@(Push s2) = if s1 == s2 then ([], []) else ([f], [s])
+    cancel f@(Jump l1) s@(Label l2) =
+        if l1 == l2 then ([s], []) else ([f], [s])
+    cancel f s = ([f], [s])
    
     optimize [] = []
     optimize (emited:[]) = [emited]
-    optimize (e1:e2:es) = if cancelling e1 e2
-        then es
-        else e1:(optimize (e2:es))
+    optimize (e1:e2:es) = 
+        let (l, r) = cancel e1 e2 in l ++ (optimize (r ++ es))
 
 getMaybeContext :: Emit (Maybe Context)
 getMaybeContext = do
@@ -198,8 +203,8 @@ instance Emitable TopDef () where
             let ls = ctxLocalsSize c
             -- TODO memset locals to 0
             when (ls > 0) $ emitUnBuf $ printf "    sub esp, %d" ls
+            mkEpilogLabel >>= (emit . Label)
             flush
-            mkEpilogLabel >>= (\l -> emitUnBuf $ printf "%s:" l)
             when (ls > 0) $ emitUnBuf $ printf "    add esp, %d" ls
             emitUnBuf "    pop ebp"
             emitUnBuf "    ret"
@@ -225,8 +230,8 @@ instance Emitable TopDef () where
                 let ls = ctxLocalsSize c
                 -- TODO memset locals to 0
                 when (ls > 0) $ emitUnBuf $ printf "    sub esp, %d" ls
+                mkEpilogLabel >>= (emit . Label)
                 flush
-                mkEpilogLabel >>= (\l -> emitUnBuf $ printf "%s:" l)
                 when (ls > 0) $ emitUnBuf $ printf "    add esp, %d" ls
                 emitUnBuf "    pop ebp"
                 emitUnBuf "    ret"
@@ -260,13 +265,10 @@ instance Emitable Stmt () where
     emit (Incr lv _) = return () -- TODO
     emit (Decr lv _) = return () -- TODO
     emit (Ret e _) = do
-        l <- mkEpilogLabel
         emit e
         emit $ Pop "eax"
-        emitBuf (printf "    jmp %s" l :: String)
-    emit (VRet _) = do
-        l <- mkEpilogLabel
-        emitBuf (printf "    jmp %s" l :: String)
+        mkEpilogLabel >>= (emit . Jump)
+    emit (VRet _) = mkEpilogLabel >>= (emit . Jump)
     emit (If _ e s) = return () -- TODO
     emit (IfElse _ e s1 s2) = return () -- TODO
     emit (While _ e s) = return () -- TODO

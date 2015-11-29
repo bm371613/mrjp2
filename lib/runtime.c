@@ -8,7 +8,7 @@ void g_printInt(int x) {
 }
 
 void g_printString(char * s) {
-    printf("%s", s);
+    printf("%s\n", s);
 }
 
 void g_error() {
