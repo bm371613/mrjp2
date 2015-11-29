@@ -347,6 +347,15 @@ instance Emitable LVal Type where
                 return t
     emit _ = return Void -- TODO
 
+emitBinaryOperation :: String -> Expr -> Expr -> Emit Type
+emitBinaryOperation op e1 e2 = do
+    t <- emit e2
+    emit e1
+    emit $ Pop "eax"
+    emitBuf $ printf "    %s eax, [esp]" op
+    emitBuf "    mov [esp], eax"
+    return t
+
 instance Emitable Expr Type where
     emit (ELitInt i) = do
         emitBuf $ printf "    push %d" i
@@ -405,4 +414,35 @@ instance Emitable Expr Type where
         t <- emit e
         emitBuf $ "    xor dword [esp], 1"
         return t
+    emit (EMul e1 Times e2) = emitBinaryOperation "imul" e1 e2
+    emit (EMul e1 Div e2) = do
+        t <- emit e2
+        emit e1
+        emit $ Pop "eax"
+        emitBuf "    cdq"
+        emitBuf $ "    idiv dword [esp]"
+        emitBuf $ "    mov [esp], eax"
+        return t
+    emit (EMul e1 Mod e2) = do
+        t <- emit e2
+        emit e1
+        emit $ Pop "eax"
+        emitBuf "    cdq"
+        emitBuf $ "    idiv dword [esp]"
+        emitBuf $ "    mov [esp], edx"
+        return t
+    emit (EAdd e1 Plus e2) = do
+        t <- emit e2
+        emit e1
+        if t == TPrim Str
+            then do
+                emitBuf "    call i_concat"
+                emitBuf "    add esp, 8"
+                emit $ Push "eax"
+            else do
+                emit $ Pop "eax"
+                emitBuf "    add eax, [esp]"
+                emitBuf "    mov [esp], eax"
+        return t
+    emit (EAdd e1 Minus e2) = emitBinaryOperation "sub" e1 e2
     emit _ = return Void -- TODO

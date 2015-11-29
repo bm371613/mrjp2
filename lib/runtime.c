@@ -1,5 +1,6 @@
 #include "stdio.h"
 #include "stdlib.h"
+#include "string.h"
 
 extern int main();
 
@@ -26,5 +27,12 @@ char * g_readString() {
     char * s = malloc(80);
     scanf("%s", s);
     return s;
+}
+
+char * i_concat(char * s1, char * s2) {
+    char * r = malloc(strlen(s1) + strlen(s2));
+    strcpy(r, s1);
+    strcat(r, s2);
+    return r;
 }
 
