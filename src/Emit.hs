@@ -81,7 +81,7 @@ flush = do
     optimize [] = []
     optimize (emited:[]) = [emited]
     optimize (e1:e2:es) = 
-        let (l, r) = cancel e1 e2 in l ++ (optimize (r ++ es))
+        let (l, r) = cancel e1 e2 in l ++ optimize (r ++ es)
 
 getMaybeContext :: Emit (Maybe Context)
 getMaybeContext = do
@@ -114,7 +114,7 @@ itemOffset offset (it:its) n =
             itemSize (Method _ _) = 4
 
 mkFnLabel :: String -> String
-mkFnLabel f = printf "g_%s" f
+mkFnLabel = printf "g_%s"
 
 mkLabel :: Emit String
 mkLabel = do
@@ -125,7 +125,7 @@ mkLabel = do
     return $ printf "%s___%d" prefix labelIx
 
 mkMthdLabel :: String -> String -> String
-mkMthdLabel c f = printf "m_%s___%s" c f
+mkMthdLabel = printf "m_%s___%s"
 
 mkPrologLabel :: Emit String
 mkPrologLabel  = do
@@ -146,7 +146,7 @@ typeSize _ = 4
 withPushedScope :: Scope -> Emit a -> Emit a
 withPushedScope s m = do
     oldContext <- getContext
-    let withPushedOldContext = setScopes (s:(ctxScopes oldContext)) oldContext
+    let withPushedOldContext = setScopes (s:ctxScopes oldContext) oldContext
     setContext withPushedOldContext
     result <- m
     withPushedNewContext <- getContext
@@ -201,7 +201,7 @@ instance Emitable TopDef () where
                 (map (\(Arg _ ident) -> name ident) args)
                 $ zip
                     (map (\(Arg t _) -> t) args)
-                    (scanl (\ls -> \(Arg t _) -> typeSize t + ls) 8 args)
+                    (scanl (\ls (Arg t _) -> typeSize t + ls) 8 args)
         withContext (Context Nothing n [args_scope] [] 0 0) $ do
             when (n == "main") $ emitUnBuf "main:"
             mkPrologLabel >>= (\l -> emitUnBuf $ printf "%s:" l)
@@ -220,7 +220,7 @@ instance Emitable TopDef () where
             emitUnBuf "\n"
     emit clsDef = mapM_ checkItem $ items clsDef
         where
-        checkItem (AttrDef _ _ _) = return ()
+        checkItem (AttrDef {}) = return ()
         checkItem (MethDef funDef) = do
             let n = name funDef
             let args = funArgs funDef
@@ -228,7 +228,7 @@ instance Emitable TopDef () where
                     (map (\(Arg _ ident) -> name ident) args)
                     $ zip
                         (map (\(Arg t _) -> t) args)
-                        (scanl (\ls -> \(Arg t _) -> typeSize t + ls) 12 args)
+                        (scanl (\ls (Arg t _) -> typeSize t + ls) 12 args)
             withContext (Context
                     (Just $ name clsDef) n [args_scope] [] 0 0) $ do
                 mkPrologLabel >>= (\l -> emitUnBuf $ printf "%s:" l)
@@ -335,15 +335,14 @@ instance Emitable LVal Type where
                 return t
             Nothing -> do
                 s <- get
-                let clsSig = (classes $ globals s)
-                        ! (fromJust $ ctxClsName c)
+                let clsSig = classes (globals s) ! fromJust (ctxClsName c)
                 let items = clsItems clsSig
                 let offset = itemOffset 0 items n
                 emitBuf "    lea eax, [bsp+8]"
                 emitBuf "    mov eax, [eax]"
                 emitBuf $ printf "    add eax, %d" offset
                 emit $ Push "eax"
-                let (Just (Attr _ t)) = find (((==) n) . name) items
+                let (Just (Attr _ t)) = find ((==) n . name) items
                 return t
     emit _ = return Void -- TODO
 
@@ -362,7 +361,7 @@ instance Emitable Expr Type where
         return $ TPrim Int
     emit (EString s) = do
         EmitState g l c <- get
-        ix <- case (s `elemIndex` l) of
+        ix <- case s `elemIndex` l of
             Just ix -> return ix
             Nothing -> do
                 let ix = length l
@@ -397,7 +396,7 @@ instance Emitable Expr Type where
         unless (argsSize == 0)
                 $ emitBuf $ printf "    add esp, %d" argsSize
         s <- get
-        let retType = funSigRetT $ (functions $ globals s) ! (name ident)
+        let retType = funSigRetT $ functions (globals s) ! name ident
         case typeSize retType of
             0 -> return ()
             4 -> emit $ Push "eax"
@@ -408,11 +407,11 @@ instance Emitable Expr Type where
     emit (ENullCast ident) = return Void -- TODO
     emit (Neg e) = do
         t <- emit e
-        emitBuf $ "    neg dword [esp]"
+        emitBuf "    neg dword [esp]"
         return t
     emit (Not e) = do
         t <- emit e
-        emitBuf $ "    xor dword [esp], 1"
+        emitBuf "    xor dword [esp], 1"
         return t
     emit (EMul e1 Times e2) = emitBinaryOperation "imul" e1 e2
     emit (EMul e1 Div e2) = do
@@ -420,16 +419,16 @@ instance Emitable Expr Type where
         emit e1
         emit $ Pop "eax"
         emitBuf "    cdq"
-        emitBuf $ "    idiv dword [esp]"
-        emitBuf $ "    mov [esp], eax"
+        emitBuf "    idiv dword [esp]"
+        emitBuf "    mov [esp], eax"
         return t
     emit (EMul e1 Mod e2) = do
         t <- emit e2
         emit e1
         emit $ Pop "eax"
         emitBuf "    cdq"
-        emitBuf $ "    idiv dword [esp]"
-        emitBuf $ "    mov [esp], edx"
+        emitBuf "    idiv dword [esp]"
+        emitBuf "    mov [esp], edx"
         return t
     emit (EAdd e1 Plus e2) = do
         t <- emit e2
@@ -467,7 +466,7 @@ instance Emitable Expr Type where
     emit (EAnd e1 e2) = do
         l <- mkLabel
         t <- emit e1
-        emitBuf $ "    cmp dword [esp], 0"
+        emitBuf "    cmp dword [esp], 0"
         emitBuf $ printf "    je %s" l
         emitBuf "    add esp, 4"
         emit e2
@@ -476,7 +475,7 @@ instance Emitable Expr Type where
     emit (EOr e1 e2) = do
         l <- mkLabel
         t <- emit e1
-        emitBuf $ "    cmp dword [esp], 1"
+        emitBuf "    cmp dword [esp], 1"
         emitBuf $ printf "    je %s" l
         emitBuf "    add esp, 4"
         emit e2
