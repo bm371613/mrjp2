@@ -445,4 +445,24 @@ instance Emitable Expr Type where
                 emitBuf "    mov [esp], eax"
         return t
     emit (EAdd e1 Minus e2) = emitBinaryOperation "sub" e1 e2
+    emit (ERel e1 rel e2) = do
+        trueL <- mkLabel
+        emit e2
+        emit e1
+        emit $ Pop "eax"
+        emit $ Pop "edx"
+        emitBuf "    push dword 1"
+        emitBuf "    cmp eax, edx"
+        emitBuf $ printf "    %s %s" (jmpInstr rel) trueL
+        emitBuf "    mov dword [esp], 0"
+        emit $ Label trueL
+        return $ TPrim Bool
+        where
+        jmpInstr LTH = "jl"
+        jmpInstr LE = "jle"
+        jmpInstr GTH = "jg"
+        jmpInstr GE = "jge"
+        jmpInstr EQU = "je"
+        jmpInstr NE = "jne"
+
     emit _ = return Void -- TODO
