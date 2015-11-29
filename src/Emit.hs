@@ -137,7 +137,7 @@ mkPrologLabel  = do
 mkEpilogLabel :: Emit String
 mkEpilogLabel = do
     l <- mkPrologLabel
-    return $ printf "%s___epilog" l
+    return $ printf "%s___epilogue" l
 
 typeSize :: Type -> Int
 typeSize Void = 0
@@ -178,7 +178,8 @@ instance Emitable Program () where
         emitUnBuf "section .text"
         emitUnBuf
             "extern g_printInt,g_printString,g_error,g_readInt,g_readString"
-        emitUnBuf "extern i_concat" -- TODO
+        emitUnBuf "extern i_concat"
+        emitUnBuf "extern malloc"
         emitUnBuf "\n"
 
         mapM_ emit topDefs
@@ -315,7 +316,42 @@ instance Emitable Stmt () where
         emit $ Pop "eax"
         emitBuf "    cmp eax,1"
         emitBuf $ printf "    je %s" bodyL
-    emit (For _ t ident e s) = return () -- TODO
+    emit (For _ t ident e s) = do
+        oldContext <- getContext
+        let ixAddr = - (ctxLocalsSize oldContext + 4)
+        let arrAddr = ixAddr - 4
+        let itAddr = arrAddr - (typeSize t)
+        setContext $ setLocalsSize (-itAddr) oldContext
+        let scope = fromList [(name ident, (t, itAddr))]
+        bodyL <- mkLabel
+        condL <- mkLabel
+
+        -- ix = 0
+        emitBuf $ printf "    mov dword [ebp%d], 0" ixAddr
+        -- set arr
+        emit e
+        emit $ Pop "eax"
+        emitBuf $ printf "    mov [ebp%d], eax" arrAddr
+
+        emit $ Jump condL
+
+        emit $ Label bodyL
+        -- set it
+        emitBuf $ printf "    mov edx, [ebp%d]" ixAddr
+        emitBuf $ printf "    mov eax, [ebp%d]" arrAddr
+        emitBuf $ printf "    mov eax, [eax+%d*edx+4]" (typeSize t)
+        emitBuf $ printf "    mov [ebp%d], eax" itAddr
+        -- emit body
+        withPushedScope scope (emit s)
+        -- incr ix
+        emitBuf $ printf "    inc dword [ebp%d]" ixAddr
+
+        emit $ Label condL
+        emitBuf $ printf "    mov edx, [ebp%d]" ixAddr
+        emitBuf $ printf "    mov eax, [ebp%d]" arrAddr
+        emitBuf "    mov eax, [eax]"
+        emitBuf "    cmp edx, eax"
+        emitBuf $ printf "    jl %s" bodyL
     emit (SExp e _) = do
         t <- emit e
         let ts = typeSize t
@@ -344,8 +380,22 @@ instance Emitable LVal Type where
                 emit $ Push "eax"
                 let (Just (Attr _ t)) = find ((==) n . name) items
                 return t
-    emit _ = return Void -- TODO
-
+    emit (LArr earr eix) = do
+        at <- emit earr
+        let t = case at of
+                TPrimArr p -> TPrim p
+                TObjArr id -> TObj id
+        emit eix
+        emit $ Pop "edx"
+        emit $ Pop "eax"
+        emitBuf $ printf "    lea eax, [eax+%d*edx+4]" (typeSize t)
+        emit $ Push "eax"
+        return t
+    emit (LAttr e attrIdent) = do
+        t <- emit e
+        case t of
+            TObj clsIdent -> return Void -- TODO
+            otherwise -> return $ TPrim Int
 emitBinaryOperation :: String -> Expr -> Expr -> Emit Type
 emitBinaryOperation op e1 e2 = do
     t <- emit e2
@@ -403,7 +453,20 @@ instance Emitable Expr Type where
         return retType
     emit (EMethCall e ident args) = return Void -- TODO
     emit (ENewObj ident) = return Void -- TODO
-    emit (ENewArr t e) = return Void -- TODO
+    emit (ENewArr t e) = do
+        emit e
+        emitBuf "    mov eax, [esp]"
+        emitBuf $ printf "    imul eax, %d" (typeSize t)
+        emitBuf "    add eax, 4"
+        emit $ Push "eax"
+        emitBuf "    call malloc" -- TODO init
+        emitBuf "    mov edx, [esp+4]"
+        emitBuf "    mov [eax], edx"
+        emitBuf "    add esp, 8"
+        emit $ Push "eax"
+        return $ case t of
+            TPrim p -> TPrimArr p
+            TObj i -> TObjArr i
     emit (ENullCast ident) = return Void -- TODO
     emit (Neg e) = do
         t <- emit e
