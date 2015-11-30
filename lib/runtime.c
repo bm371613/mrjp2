@@ -36,3 +36,7 @@ char * i_concat(char * s1, char * s2) {
     return r;
 }
 
+void i_meminit(void * addr, size_t n) {
+    memset(addr, 0, n);
+}
+

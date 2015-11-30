@@ -178,7 +178,7 @@ instance Emitable Program () where
         emitUnBuf "section .text"
         emitUnBuf
             "extern g_printInt,g_printString,g_error,g_readInt,g_readString"
-        emitUnBuf "extern i_concat"
+        emitUnBuf "extern i_concat, i_meminit"
         emitUnBuf "extern malloc"
         emitUnBuf "\n"
 
@@ -209,11 +209,15 @@ instance Emitable TopDef () where
             emitUnBuf "    push ebp"
             emitUnBuf "    mov ebp, esp"
             emit (body funDef)
+            mkEpilogLabel >>= (emit . Label)
             c <- getContext
             let ls = ctxLocalsSize c
-            -- TODO memset locals to 0
-            when (ls > 0) $ emitUnBuf $ printf "    sub esp, %d" ls
-            mkEpilogLabel >>= (emit . Label)
+            when (ls > 0) $ do
+                emitUnBuf $ printf "    sub esp, %d" ls
+                emitUnBuf $ printf "    push %d" ls
+                emitUnBuf "    push esp"
+                emitUnBuf "    call i_meminit"
+                emitUnBuf "    add esp, 8"
             flush
             when (ls > 0) $ emitUnBuf $ printf "    add esp, %d" ls
             emitUnBuf "    pop ebp"
@@ -236,11 +240,15 @@ instance Emitable TopDef () where
                 emitUnBuf "    push ebp"
                 emitUnBuf "    mov ebp, esp"
                 emit (body funDef)
+                mkEpilogLabel >>= (emit . Label)
                 c <- getContext
                 let ls = ctxLocalsSize c
-                -- TODO memset locals to 0
-                when (ls > 0) $ emitUnBuf $ printf "    sub esp, %d" ls
-                mkEpilogLabel >>= (emit . Label)
+                when (ls > 0) $ do
+                    emitUnBuf $ printf "    sub esp, %d" ls
+                    emitUnBuf $ printf "    push %d" ls
+                    emitUnBuf "    push esp"
+                    emitUnBuf "    call i_meminit"
+                    emitUnBuf "    add esp, 8"
                 flush
                 when (ls > 0) $ emitUnBuf $ printf "    add esp, %d" ls
                 emitUnBuf "    pop ebp"
@@ -459,7 +467,10 @@ instance Emitable Expr Type where
         emitBuf $ printf "    imul eax, %d" (typeSize t)
         emitBuf "    add eax, 4"
         emit $ Push "eax"
-        emitBuf "    call malloc" -- TODO init
+        emitBuf "    call malloc"
+        emit $ Push "eax"
+        emitBuf "    call i_meminit"
+        emit $ Pop "eax"
         emitBuf "    mov edx, [esp+4]"
         emitBuf "    mov [eax], edx"
         emitBuf "    add esp, 8"
