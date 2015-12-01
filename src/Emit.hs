@@ -15,7 +15,8 @@ import Types
 type Scope = Map String (Type, Int)
 
 data Emited = Line String
-    | Push String | Pop String
+    | PushReg String | PushDword String
+    | PopReg String | AddToEsp Int
     | Label String | Jump String deriving (Show)
 
 data Context = Context
@@ -67,13 +68,31 @@ flush = do
             setContext $ setOutBuf [] c
     where
     printOut (Line str) = putStrLn str
-    printOut (Push str) = putStrLn $ printf "    push %s" str
-    printOut (Pop str) = putStrLn $ printf "    pop %s" str
+    printOut (PushReg str) = putStrLn $ printf "    push %s" str
+    printOut (PushDword str) = putStrLn $ printf "    push dword %s" str
+    printOut (PopReg str) = putStrLn $ printf "    pop %s" str
+    printOut (AddToEsp i) = putStrLn $ printf "    add esp, %d" i
     printOut (Label l) = putStrLn $ printf "%s:" l
     printOut (Jump l) = putStrLn $ printf "    jmp %s" l
 
-    cancel f@(Push s1) s@(Pop s2) = if s1 == s2 then ([], []) else ([f], [s])
-    cancel f@(Pop s1) s@(Push s2) = if s1 == s2 then ([], []) else ([f], [s])
+    used32regs = ["eax", "edx", "esp", "ebp"]
+
+    cancel f@(PushReg s1) s@(PopReg s2) =
+            if s1 == s2 then ([], []) else ([f], [s])
+    cancel f@(PopReg s1) s@(PushReg s2) =
+            if s1 == s2 then ([], []) else ([f], [s])
+    cancel f@(PushDword d) s@(PopReg r) =
+        if r `elem` used32regs
+            then ([Line $ printf "    mov %s, %s" r d], [])
+            else ([f], [s])
+    cancel f@(PushDword _) s@(AddToEsp i)
+        | i == 4    = ([], [])
+        | i > 4     = ([AddToEsp (i - 4)], [])
+        | otherwise = ([f], [s])
+    cancel f@(PushReg r) s@(AddToEsp i) =
+        if r `elem` used32regs
+            then cancel (PushDword r) s
+            else ([f], [s])
     cancel f@(Jump l1) s@(Label l2) =
         if l1 == l2 then ([s], []) else ([f], [s])
     cancel f s = ([f], [s])
@@ -109,9 +128,10 @@ itemOffset offset (it:its) n =
         if n == name it
             then offset
             else itemOffset (offset + itemSize it) its n
-        where
-            itemSize (Attr _ t) = typeSize t
-            itemSize (Method _ _) = 4
+
+itemSize :: ClsSigItem -> Int
+itemSize (Attr _ t) = typeSize t
+itemSize (Method _ _) = 4
 
 mkFnLabel :: String -> String
 mkFnLabel = printf "g_%s"
@@ -263,26 +283,26 @@ instance Emitable Stmt () where
     emit (Ass lv e _) = do
         emit lv
         emit e
-        emit $ Pop "eax"
-        emit $ Pop "edx"
+        emit $ PopReg "eax"
+        emit $ PopReg "edx"
         emitBuf "    mov [edx], eax"
     emit (Incr lv _) = do
         emit lv
-        emit $ Pop "eax"
+        emit $ PopReg "eax"
         emitBuf "    inc dword [eax]"
     emit (Decr lv _) = do
         emit lv
-        emit $ Pop "eax"
+        emit $ PopReg "eax"
         emitBuf "    dec dword [eax]"
     emit (Ret e _) = do
         emit e
-        emit $ Pop "eax"
+        emit $ PopReg "eax"
         mkEpilogLabel >>= (emit . Jump)
     emit (VRet _) = mkEpilogLabel >>= (emit . Jump)
     emit (If _ e s) = do
         endL <- mkLabel
         emit e
-        emit $ Pop "eax"
+        emit $ PopReg "eax"
         emitBuf "    cmp eax,1"
         emitBuf $ printf "    jne %s" endL
         emit s
@@ -291,7 +311,7 @@ instance Emitable Stmt () where
         elseL <- mkLabel
         endL <- mkLabel
         emit e
-        emit $ Pop "eax"
+        emit $ PopReg "eax"
         emitBuf "    cmp eax,1"
         emitBuf $ printf "    jne %s" elseL
         emit s1
@@ -307,7 +327,7 @@ instance Emitable Stmt () where
         emit s
         emit $ Label condL
         emit e
-        emit $ Pop "eax"
+        emit $ PopReg "eax"
         emitBuf "    cmp eax,1"
         emitBuf $ printf "    je %s" bodyL
     emit (For _ t ident e s) = do
@@ -324,7 +344,7 @@ instance Emitable Stmt () where
         emitBuf $ printf "    mov dword [ebp%d], 0" ixAddr
         -- set arr
         emit e
-        emit $ Pop "eax"
+        emit $ PopReg "eax"
         emitBuf $ printf "    mov [ebp%d], eax" arrAddr
 
         emit $ Jump condL
@@ -349,7 +369,7 @@ instance Emitable Stmt () where
     emit (SExp e _) = do
         t <- emit e
         let ts = typeSize t
-        unless (ts == 0) $ emitBuf $ printf "    add esp, %d" ts
+        unless (ts == 0) $ emit $ AddToEsp ts
 
 instance Emitable LVal Type where
     emit (LVar ident) = do
@@ -361,17 +381,18 @@ instance Emitable LVal Type where
                 emitBuf (if addr >= 0
                     then printf "    lea eax, [ebp+%d]" addr
                     else printf "    lea eax, [ebp%d]" addr)
-                emit $ Push "eax"
+                emit $ PushReg "eax"
                 return t
             Nothing -> do
                 s <- get
                 let clsSig = classes (globals s) ! fromJust (ctxClsName c)
                 let items = clsItems clsSig
                 let offset = itemOffset 0 items n
-                emitBuf "    lea eax, [bsp+8]"
+                emitBuf "    lea eax, [ebp+8]"
                 emitBuf "    mov eax, [eax]"
-                emitBuf $ printf "    add eax, %d" offset
-                emit $ Push "eax"
+                unless (offset == 0) $
+                        emitBuf $ printf "    add eax, %d" offset
+                emit $ PushReg "eax"
                 let (Just (Attr _ t)) = find ((==) n . name) items
                 return t
     emit (LArr earr eix) = do
@@ -380,28 +401,39 @@ instance Emitable LVal Type where
                 TPrimArr p -> TPrim p
                 TObjArr id -> TObj id
         emit eix
-        emit $ Pop "edx"
-        emit $ Pop "eax"
+        emit $ PopReg "edx"
+        emit $ PopReg "eax"
         emitBuf $ printf "    lea eax, [eax+%d*edx+4]" (typeSize t)
-        emit $ Push "eax"
+        emit $ PushReg "eax"
         return t
     emit (LAttr e attrIdent) = do
         t <- emit e
         case t of
-            TObj clsIdent -> return Void -- TODO
+            TObj clsIdent -> do
+                s <- get
+                let n = name attrIdent
+                let clsSig = classes (globals s) ! name clsIdent
+                let items = clsItems clsSig
+                let offset = itemOffset 0 items n
+                emit $ PopReg "eax"
+                unless (offset == 0)
+                        $ emitBuf $ printf "    add eax, %d" offset
+                emit $ PushReg "eax"
+                let (Just (Attr _ t)) = find ((==) n . name) items
+                return t
             otherwise -> return $ TPrim Int
 emitBinaryOperation :: String -> Expr -> Expr -> Emit Type
 emitBinaryOperation op e1 e2 = do
     t <- emit e2
     emit e1
-    emit $ Pop "eax"
+    emit $ PopReg "eax"
     emitBuf $ printf "    %s eax, [esp]" op
     emitBuf "    mov [esp], eax"
     return t
 
 instance Emitable Expr Type where
     emit (ELitInt i) = do
-        emitBuf $ printf "    push %d" i
+        emit $ PushDword $ show i
         return $ TPrim Int
     emit (EString s) = do
         EmitState g l c <- get
@@ -412,59 +444,94 @@ instance Emitable Expr Type where
                 put $ EmitState g (l ++ [s]) c
                 return ix
         emitBuf $ printf "    lea eax, [l_%d]" ix
-        emit $ Push "eax"
+        emit $ PushReg "eax"
         return $ TPrim Str
     emit ELitTrue = let t = TPrim Bool in do
-        emitBuf "    push 1"
+        emit $ PushDword "1"
         return t
     emit ELitFalse = let t = TPrim Bool in do
-        emitBuf "    push 0"
+        emit $ PushDword "0"
         return t
     emit ENull = let t = BaseObject in do
-        emitBuf "    push 0"
+        emit $ PushDword "0"
         return t
     emit ESelf = do
+        emit $ PushDword "[ebp+8]"
         c <- getContext
-        let t = TObj $ mkId $ fromJust $ ctxClsName c
-        emitBuf "    push dword [bsp+8]"
-        return t
+        return $ TObj $ mkId $ fromJust $ ctxClsName c
     emit (ELVal lVal) = do
         t <- emit lVal
-        emit $ Pop "eax"
-        emitBuf "    push dword [eax]"
+        emit $ PopReg "eax"
+        emit $ PushDword "[eax]"
         return t
     emit (ECall ident args) = do
         argTypes <- mapM emit (reverse args)
-        emitBuf $ printf"    call %s" (mkFnLabel $ name ident)
+        emitBuf $ printf "    call %s" (mkFnLabel $ name ident)
         let argsSize = sum $ map typeSize argTypes
-        unless (argsSize == 0)
-                $ emitBuf $ printf "    add esp, %d" argsSize
+        unless (argsSize == 0) $ emit $ AddToEsp argsSize
         s <- get
         let retType = funSigRetT $ functions (globals s) ! name ident
         case typeSize retType of
             0 -> return ()
-            4 -> emit $ Push "eax"
+            4 -> emit $ PushReg "eax"
         return retType
-    emit (EMethCall e ident args) = return Void -- TODO
-    emit (ENewObj ident) = return Void -- TODO
+    emit (EMethCall e ident args) = do
+        argTypes <- mapM emit (reverse args)
+        TObj calledIdent <- emit e
+        s <- get
+        let items = clsItems $ (classes $ globals s) ! (name calledIdent)
+        emitBuf "    mov eax, [esp]"
+        let offset = itemOffset 0 items $ name ident in unless (offset == 0)
+                $ emitBuf $ printf "    add eax, %d" offset
+        emitBuf "    call [eax]"
+        emit $ AddToEsp $ 4 + (sum $ map typeSize argTypes)
+        let Just (Method _ fs) = find (\i -> name i == name ident) $ items
+        let retType = funSigRetT fs
+        case typeSize retType of
+            0 -> return ()
+            4 -> emit $ PushReg "eax"
+        return retType
+    emit (ENewObj ident) = do
+        s <- get
+        let items = clsItems $ (classes $ globals s) ! (name ident)
+        let size = max (sum $ map itemSize items) 4  -- malloc(0) may return 0
+        emit $ PushDword $ show size
+        emitBuf "    call malloc"
+        emit $ PushReg "eax"
+        emitBuf "    call i_meminit"
+        emit $ PopReg "eax"
+        emit $ AddToEsp 4
+        initItems 0 items
+        emit $ PushReg "eax"
+        return $ TObj ident
+        where
+        initItems _ [] = return ()
+        initItems offset ((Attr _ t):items) =
+                initItems (offset + typeSize t) items
+        initItems offset ((Method m _):items) = do
+            emitBuf $ printf "    lea edx, [%s]" (mkMthdLabel (name ident) m)
+            emitBuf $ printf "    mov dword [eax+%d], edx" offset
+            initItems (offset + 4) items
     emit (ENewArr t e) = do
         emit e
         emitBuf "    mov eax, [esp]"
         emitBuf $ printf "    imul eax, %d" (typeSize t)
         emitBuf "    add eax, 4"
-        emit $ Push "eax"
+        emit $ PushReg "eax"
         emitBuf "    call malloc"
-        emit $ Push "eax"
+        emit $ PushReg "eax"
         emitBuf "    call i_meminit"
-        emit $ Pop "eax"
+        emit $ PopReg "eax"
         emitBuf "    mov edx, [esp+4]"
         emitBuf "    mov [eax], edx"
-        emitBuf "    add esp, 8"
-        emit $ Push "eax"
+        emit $ AddToEsp 8
+        emit $ PushReg "eax"
         return $ case t of
             TPrim p -> TPrimArr p
             TObj i -> TObjArr i
-    emit (ENullCast ident) = return Void -- TODO
+    emit (ENullCast ident) = do
+        emit $ PushDword "0"
+        return $ TObj ident
     emit (Neg e) = do
         t <- emit e
         emitBuf "    neg dword [esp]"
@@ -477,7 +544,7 @@ instance Emitable Expr Type where
     emit (EMul e1 Div e2) = do
         t <- emit e2
         emit e1
-        emit $ Pop "eax"
+        emit $ PopReg "eax"
         emitBuf "    cdq"
         emitBuf "    idiv dword [esp]"
         emitBuf "    mov [esp], eax"
@@ -485,7 +552,7 @@ instance Emitable Expr Type where
     emit (EMul e1 Mod e2) = do
         t <- emit e2
         emit e1
-        emit $ Pop "eax"
+        emit $ PopReg "eax"
         emitBuf "    cdq"
         emitBuf "    idiv dword [esp]"
         emitBuf "    mov [esp], edx"
@@ -496,10 +563,10 @@ instance Emitable Expr Type where
         if t == TPrim Str
             then do
                 emitBuf "    call i_concat"
-                emitBuf "    add esp, 8"
-                emit $ Push "eax"
+                emit $ AddToEsp 8
+                emit $ PushReg "eax"
             else do
-                emit $ Pop "eax"
+                emit $ PopReg "eax"
                 emitBuf "    add eax, [esp]"
                 emitBuf "    mov [esp], eax"
         return t
@@ -508,9 +575,9 @@ instance Emitable Expr Type where
         trueL <- mkLabel
         emit e2
         emit e1
-        emit $ Pop "eax"
-        emit $ Pop "edx"
-        emitBuf "    push dword 1"
+        emit $ PopReg "eax"
+        emit $ PopReg "edx"
+        emit $ PushDword "1"
         emitBuf "    cmp eax, edx"
         emitBuf $ printf "    %s %s" (jmpInstr rel) trueL
         emitBuf "    mov dword [esp], 0"
@@ -528,7 +595,7 @@ instance Emitable Expr Type where
         t <- emit e1
         emitBuf "    cmp dword [esp], 0"
         emitBuf $ printf "    je %s" l
-        emitBuf "    add esp, 4"
+        emit $ AddToEsp 4
         emit e2
         emit $ Label l
         return t
@@ -537,7 +604,7 @@ instance Emitable Expr Type where
         t <- emit e1
         emitBuf "    cmp dword [esp], 1"
         emitBuf $ printf "    je %s" l
-        emitBuf "    add esp, 4"
+        emit $ AddToEsp 4
         emit e2
         emit $ Label l
         return t
