@@ -271,8 +271,12 @@ instance Emitable Stmt () where
         where
         emitItem (NoInit ident) = define (name ident)
         emitItem (Init ident e) = do
+            emit e
             define (name ident)
-            emit (Ass (LVar ident) e semiC)
+            emit (LVar ident)
+            emit $ PopReg "eax"
+            emit $ PopReg "edx"
+            emitBuf "    mov [eax], edx"
         define n = do
             oldContext <- getContext
             let (sc:scs) = ctxScopes oldContext
