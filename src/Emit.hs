@@ -205,24 +205,7 @@ instance Emitable TopDef () where
                     (scanl (\ls (Arg t _) -> typeSize t + ls) 8 args)
         withContext (Context Nothing n [args_scope] [] 0 0) $ do
             when (n == "main") $ emitUnBuf "main:"
-            mkPrologLabel >>= (\l -> emitUnBuf $ printf "%s:" l)
-            emitUnBuf "    push ebp"
-            emitUnBuf "    mov ebp, esp"
-            emit (body funDef)
-            mkEpilogLabel >>= (emit . Label)
-            c <- getContext
-            let ls = ctxLocalsSize c
-            when (ls > 0) $ do
-                emitUnBuf $ printf "    sub esp, %d" ls
-                emitUnBuf $ printf "    push %d" ls
-                emitUnBuf "    push esp"
-                emitUnBuf "    call i_meminit"
-                emitUnBuf "    add esp, 8"
-            flush
-            when (ls > 0) $ emitUnBuf $ printf "    add esp, %d" ls
-            emitUnBuf "    pop ebp"
-            emitUnBuf "    ret"
-            emitUnBuf "\n"
+            emit funDef
     emit clsDef = mapM_ checkItem $ items clsDef
         where
         checkItem (AttrDef {}) = return ()
@@ -235,25 +218,28 @@ instance Emitable TopDef () where
                         (map (\(Arg t _) -> t) args)
                         (scanl (\ls (Arg t _) -> typeSize t + ls) 12 args)
             withContext (Context
-                    (Just $ name clsDef) n [args_scope] [] 0 0) $ do
-                mkPrologLabel >>= (\l -> emitUnBuf $ printf "%s:" l)
-                emitUnBuf "    push ebp"
-                emitUnBuf "    mov ebp, esp"
-                emit (body funDef)
-                mkEpilogLabel >>= (emit . Label)
-                c <- getContext
-                let ls = ctxLocalsSize c
-                when (ls > 0) $ do
-                    emitUnBuf $ printf "    sub esp, %d" ls
-                    emitUnBuf $ printf "    push %d" ls
-                    emitUnBuf "    push esp"
-                    emitUnBuf "    call i_meminit"
-                    emitUnBuf "    add esp, 8"
-                flush
-                when (ls > 0) $ emitUnBuf $ printf "    add esp, %d" ls
-                emitUnBuf "    pop ebp"
-                emitUnBuf "    ret"
-                emitUnBuf "\n"
+                    (Just $ name clsDef) n [args_scope] [] 0 0) $ emit funDef
+
+instance Emitable FunDef () where
+    emit funDef = do
+        mkPrologLabel >>= (\l -> emitUnBuf $ printf "%s:" l)
+        emitUnBuf "    push ebp"
+        emitUnBuf "    mov ebp, esp"
+        emit (body funDef)
+        mkEpilogLabel >>= (emit . Label)
+        c <- getContext
+        let ls = ctxLocalsSize c
+        when (ls > 0) $ do
+            emitUnBuf $ printf "    sub esp, %d" ls
+            emitUnBuf $ printf "    push %d" ls
+            emitUnBuf "    push esp"
+            emitUnBuf "    call i_meminit"
+            emitUnBuf "    add esp, 8"
+        flush
+        when (ls > 0) $ emitUnBuf $ printf "    add esp, %d" ls
+        emitUnBuf "    pop ebp"
+        emitUnBuf "    ret"
+        emitUnBuf "\n"
 
 instance Emitable Block () where
     emit (Block stmts) = withPushedScope empty $ mapM_ emit stmts
@@ -328,7 +314,7 @@ instance Emitable Stmt () where
         oldContext <- getContext
         let ixAddr = - (ctxLocalsSize oldContext + 4)
         let arrAddr = ixAddr - 4
-        let itAddr = arrAddr - (typeSize t)
+        let itAddr = arrAddr - typeSize t
         setContext $ setLocalsSize (-itAddr) oldContext
         let scope = fromList [(name ident, (t, itAddr))]
         bodyL <- mkLabel
