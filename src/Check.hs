@@ -169,27 +169,22 @@ instance Checkable Program () where
         makeClsSigItem clsName (MethDef funDef) = Method (name funDef)
                 (makeFunSig funDef) clsName
 
-        changeClassDefiningMethod
-                :: String -> String -> ClsSigItem -> ClsSigItem
-        changeClassDefiningMethod m c i = case i of
-                (Method n s _) | n == m -> Method n s c
-                otherwise -> i
-
         mergeClsSigItems :: [ClsSigItem] -> [ClsSigItem] -> Check [ClsSigItem]
         mergeClsSigItems mergedItems [] = return mergedItems
         mergeClsSigItems mergedItems (clsItem : leftItems) =
-            let found = find (\i -> name i == name clsItem) mergedItems
+            let 
+                iName = name clsItem
+                found = find ((==) iName . name) mergedItems
             in case (clsItem, found) of
                 (_, Nothing) ->
-                    mergeClsSigItems (mergedItems ++ [clsItem]) leftItems
-                (Method _ s1 clsName, Just (Method _ s2 _)) | s1 == s2 ->
-                    let changeDef =
-                            changeClassDefiningMethod (name clsItem) clsName
-                    in mergeClsSigItems
-                            (map changeDef mergedItems)
-                            leftItems
+                        mergeClsSigItems (mergedItems ++ [clsItem]) leftItems
+                (Method _ s1 cls, Just (Method _ s2 _)) | s1 == s2 ->
+                    let fixDef i = case i of
+                            (Method n s _) | n == iName -> Method n s cls
+                            otherwise -> i
+                    in mergeClsSigItems (map fixDef mergedItems) leftItems
                 otherwise -> throwError $ printf
-                    "Illegal redefinition of %s" (name clsItem)
+                        "Illegal redefinition of %s" (name clsItem)
 
         addClsSig :: Map String ClsSig -> TopDef -> Check (Map String ClsSig)
         addClsSig sigs (ClsDef clsIdent items) = return $ insert

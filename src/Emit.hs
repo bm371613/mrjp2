@@ -131,7 +131,7 @@ itemOffset offset (it:its) n =
 
 itemSize :: ClsSigItem -> Int
 itemSize (Attr _ t) = typeSize t
-itemSize (Method _ _ _) = 4
+itemSize (Method {}) = 4
 
 mkFnLabel :: String -> String
 mkFnLabel = printf "g_%s"
@@ -479,13 +479,13 @@ instance Emitable Expr Type where
         argTypes <- mapM emit (reverse args)
         TObj calledIdent <- emit e
         s <- get
-        let items = clsItems $ (classes $ globals s) ! (name calledIdent)
+        let items = clsItems $ classes (globals s) ! name calledIdent
         emitBuf "    mov eax, [esp]"
         let offset = itemOffset 0 items $ name ident in unless (offset == 0)
                 $ emitBuf $ printf "    add eax, %d" offset
         emitBuf "    call [eax]"
-        emit $ AddToEsp $ 4 + (sum $ map typeSize argTypes)
-        let Just (Method _ fs _) = find (\i -> name i == name ident) $ items
+        emit $ AddToEsp $ 4 + sum (map typeSize argTypes)
+        let Just (Method _ fs _) = find (\i -> name i == name ident) items
         let retType = funSigRetT fs
         case typeSize retType of
             0 -> return ()
@@ -493,7 +493,7 @@ instance Emitable Expr Type where
         return retType
     emit (ENewObj ident) = do
         s <- get
-        let items = clsItems $ (classes $ globals s) ! (name ident)
+        let items = clsItems $ classes (globals s) ! name ident
         let size = max (sum $ map itemSize items) 4  -- malloc(0) may return 0
         emit $ PushDword $ show size
         emitBuf "    call malloc"
@@ -506,9 +506,9 @@ instance Emitable Expr Type where
         return $ TObj ident
         where
         initItems _ [] = return ()
-        initItems offset ((Attr _ t):items) =
+        initItems offset (Attr _ t:items) =
                 initItems (offset + typeSize t) items
-        initItems offset ((Method m _ c):items) = do
+        initItems offset (Method m _ c:items) = do
             emitBuf $ printf "    lea edx, [%s]" (mkMthdLabel c m)
             emitBuf $ printf "    mov dword [eax+%d], edx" offset
             initItems (offset + 4) items
