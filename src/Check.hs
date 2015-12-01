@@ -164,10 +164,16 @@ instance Checkable Program () where
             tail <- checkClsExtTree (ok ++ checkedClss) rest
             return $ currentCls : tail
 
-        makeClsSigItem :: ClsDefItem -> ClsSigItem
-        makeClsSigItem (AttrDef t pIdent _) = Attr (name pIdent) t
-        makeClsSigItem (MethDef funDef) = Method (name funDef)
-                (makeFunSig funDef)
+        makeClsSigItem :: String -> ClsDefItem -> ClsSigItem
+        makeClsSigItem clsName (AttrDef t pIdent _) = Attr (name pIdent) t
+        makeClsSigItem clsName (MethDef funDef) = Method (name funDef)
+                (makeFunSig funDef) clsName
+
+        changeClassDefiningMethod
+                :: String -> String -> ClsSigItem -> ClsSigItem
+        changeClassDefiningMethod m c i = case i of
+                (Method n s _) | n == m -> Method n s c
+                otherwise -> i
 
         mergeClsSigItems :: [ClsSigItem] -> [ClsSigItem] -> Check [ClsSigItem]
         mergeClsSigItems mergedItems [] = return mergedItems
@@ -176,18 +182,24 @@ instance Checkable Program () where
             in case (clsItem, found) of
                 (_, Nothing) ->
                     mergeClsSigItems (mergedItems ++ [clsItem]) leftItems
-                (Method _ s1, Just (Method _ s2)) | s1 == s2 ->
-                    mergeClsSigItems mergedItems leftItems
+                (Method _ s1 clsName, Just (Method _ s2 _)) | s1 == s2 ->
+                    let changeDef =
+                            changeClassDefiningMethod (name clsItem) clsName
+                    in mergeClsSigItems
+                            (map changeDef mergedItems)
+                            leftItems
                 otherwise -> throwError $ printf
                     "Illegal redefinition of %s" (name clsItem)
 
         addClsSig :: Map String ClsSig -> TopDef -> Check (Map String ClsSig)
         addClsSig sigs (ClsDef clsIdent items) = return $ insert
                 (name clsIdent)
-                (ClsSig [name clsIdent] (map makeClsSigItem items)) sigs
+                (ClsSig [name clsIdent]
+                        (map (makeClsSigItem $ name clsIdent) items))
+                sigs
         addClsSig sigs (ClsExtDef clsIdent superIdent items) = do
             let superSig = sigs ! name superIdent
-            let newSigItems = map makeClsSigItem items
+            let newSigItems = map (makeClsSigItem $ name clsIdent) items
             sigItems <- catchError
                 (mergeClsSigItems (clsItems superSig) newSigItems)
                 (\e -> throwError $ printf "%s\n\tin class %s (line %d)"
@@ -400,7 +412,7 @@ instance Checkable Expr Type where
                 return $ classes (globals s) ! name clsIdent
             otherwise -> throwError "Method call on non-object"
         funSig <- case find (\i -> name i == name ident) $ clsItems clsSig of
-            Just (Method _ fs) -> return fs
+            Just (Method _ fs _) -> return fs
             otherwise -> throwError $ printf "No method: %s" (name ident)
         argTs <- mapM check args
         let sigArgTs = funSigArgTs funSig

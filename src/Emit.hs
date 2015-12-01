@@ -131,7 +131,7 @@ itemOffset offset (it:its) n =
 
 itemSize :: ClsSigItem -> Int
 itemSize (Attr _ t) = typeSize t
-itemSize (Method _ _) = 4
+itemSize (Method _ _ _) = 4
 
 mkFnLabel :: String -> String
 mkFnLabel = printf "g_%s"
@@ -485,7 +485,7 @@ instance Emitable Expr Type where
                 $ emitBuf $ printf "    add eax, %d" offset
         emitBuf "    call [eax]"
         emit $ AddToEsp $ 4 + (sum $ map typeSize argTypes)
-        let Just (Method _ fs) = find (\i -> name i == name ident) $ items
+        let Just (Method _ fs _) = find (\i -> name i == name ident) $ items
         let retType = funSigRetT fs
         case typeSize retType of
             0 -> return ()
@@ -508,8 +508,8 @@ instance Emitable Expr Type where
         initItems _ [] = return ()
         initItems offset ((Attr _ t):items) =
                 initItems (offset + typeSize t) items
-        initItems offset ((Method m _):items) = do
-            emitBuf $ printf "    lea edx, [%s]" (mkMthdLabel (name ident) m)
+        initItems offset ((Method m _ c):items) = do
+            emitBuf $ printf "    lea edx, [%s]" (mkMthdLabel c m)
             emitBuf $ printf "    mov dword [eax+%d], edx" offset
             initItems (offset + 4) items
     emit (ENewArr t e) = do

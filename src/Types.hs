@@ -18,7 +18,13 @@ data ClsSig = ClsSig
     , clsItems ::[ClsSigItem]
     } deriving (Show)
 
-data ClsSigItem = Attr String Type | Method String FunSig deriving (Show)
+data ClsSigItem =
+      Attr String Type
+    | Method
+    { mthName ::String
+    , mthSig :: FunSig
+    , definedInCls :: String
+    } deriving (Show)
 
 data Globals = Globals
     { classes :: Map String ClsSig
@@ -27,5 +33,5 @@ data Globals = Globals
 
 instance Named ClsSigItem where
     name (Attr name _) = name
-    name (Method name _) = name
+    name (Method name _ _) = name
 
