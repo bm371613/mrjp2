@@ -1,0 +1,70 @@
+**Bartosz Marcinkowski, 319476**
+
+Opis rozwiązania
+===
+
+Specyfikacja implementacji
+---
+Kompilator generuje kod assemblera NASM dla procesora x86 (32 bitowego),
+wykorzystując standardowy protokół wołania funkcji. Większość obliczeń
+wykorzystuje stos, wykorzystywane są rejestry eax, edx, ebp, esp.
+
+Jedyną zaimplementowaną optymalizacją jest "peephole optimization", tzn. kod
+jest przed wypisaniem zbierany do bufora i każda para kolejnych instrukcji
+może być zoptymalizowana, np.
+
+    jmp label                   >           label:
+    label:                      >
+    --------------------------------------------------------
+    push dword [esp+8]          >           mov edx, [esp+8]
+    pop edx                     >
+    --------------------------------------------------------
+    push edx                    >
+    pop edx                     >
+    --------------------------------------------------------
+    push eax                    >           add esp, 4
+    add esp, 8                  >
+
+Zaimplementowane są następujące rozszerzenia języka Latte:
+ - tablice
+ - struktury
+ - obiekty
+ - metody wirtualne
+
+Użyte technologie
+---
+Rozwiązanie jest napisane w Haskellu, z pomocą BNFC oraz pakietów transformers
+i mtl. Dodatkowo użyłem skryptów Bash do napisania plików wykonywalnych.
+
+Struktura projektu
+---
+Kod źródłowy Haskella znajduje się w katalogu `src`. W `src/Parser` znajdują
+się (lekko zmodyfikowane) pliki wygenerowane przez BNFC. Pozostałe pliki są
+napisane ręcznie:
+
+ - `Types.hs`: funkcje i struktury pomocnicze wspólne dla front- i backendu
+ - `Check.hs`: frontend
+ - `Emit.hs`: backend
+ - `Main.hs`: defninuje funkcję main kompilatora
+
+W katalogu `lib` znajduje się plik `runtime.c`, oraz źródła używanych pakietów
+Haskella, które nie są zainstalowane na maszynie students:
+
+ - transformers 0.4.3.0
+ - mtl 2.2.1
+
+W korzeniu projektu znajduje się:
+ - `Setup.hs`, `mrjp2.cabal`: pozwalają zbudować projekt narzędziem `cabal`
+ - `Makefile`: buduje buduje projekt do katalogu `dist` narzędziem `cabal`
+   oraz kompiluje lib/runtime.c do lib/runtime.o
+ - `latc_x86`, `latc`: skrypty, które zapewniają interfejs zgodny ze
+   specyfikacją zadania korzystając ze zbudowanego projektu oraz dodatkowych
+   narzędzi (`nasm`, `gcc`)
+
+Kompilacja i uruchamianie
+---
+Po wywołaniu polecenia `make` w korzeniu projektu, w korzeniu projektu powinien
+pojawić się katalog dist, a pliki wykonywalne `latc_x86` orax `latc` powinny
+działać zgodnie ze specyfikacją zadania.
+
+
