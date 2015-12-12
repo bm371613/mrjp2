@@ -576,16 +576,21 @@ instance Emitable Expr Type where
         return t
     emit (EAdd e1 Minus e2) = emitBinaryOperation "sub" e1 e2
     emit (ERel e1 rel e2) = do
-        trueL <- mkLabel
         t <- emit e2
         emit e1
         if t == TPrim Str
             then do
                 emitBuf "    call i_string_eq"
                 emit $ AddToEsp 8
-                emit $ PushReg "eax"
+                case rel of
+                    EQU -> emit $ PushReg "eax"
+                    NE -> do
+                        emitBuf "    mov edx, 1"
+                        emitBuf "    sub edx, eax"
+                        emit $ PushReg "edx"
                 return $ TPrim Bool
             else do
+                trueL <- mkLabel
                 emit $ PopReg "eax"
                 emit $ PopReg "edx"
                 emit $ PushDword "1"
