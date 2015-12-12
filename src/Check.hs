@@ -376,7 +376,10 @@ checkBinOp argP retP arg1 arg2 opName = do
     return $ TPrim retP
 
 instance Checkable Expr Type where
-    check (ELitInt _) = return $ TPrim Int
+    check (ELitInt i) =
+        if i < 2 ^ 32
+            then return $ TPrim Int
+            else throwError "Integer constant out of bounds"
     check (EString _) = return $ TPrim Str
     check ELitTrue = return $ TPrim Bool
     check ELitFalse = return $ TPrim Bool

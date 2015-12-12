@@ -580,20 +580,20 @@ instance Emitable Expr Type where
         t <- emit e2
         emit e1
         if t == TPrim Str
-        then do
-            emitBuf "    call i_string_eq"
-            emit $ AddToEsp 8
-            emit $ PushReg "eax"
-            return $ TPrim Bool
-        else do
-            emit $ PopReg "eax"
-            emit $ PopReg "edx"
-            emit $ PushDword "1"
-            emitBuf "    cmp eax, edx"
-            emitBuf $ printf "    %s %s" (jmpInstr rel) trueL
-            emitBuf "    mov dword [esp], 0"
-            emit $ Label trueL
-            return $ TPrim Bool
+            then do
+                emitBuf "    call i_string_eq"
+                emit $ AddToEsp 8
+                emit $ PushReg "eax"
+                return $ TPrim Bool
+            else do
+                emit $ PopReg "eax"
+                emit $ PopReg "edx"
+                emit $ PushDword "1"
+                emitBuf "    cmp eax, edx"
+                emitBuf $ printf "    %s %s" (jmpInstr rel) trueL
+                emitBuf "    mov dword [esp], 0"
+                emit $ Label trueL
+                return $ TPrim Bool
         where
         jmpInstr LTH = "jl"
         jmpInstr LE = "jle"
