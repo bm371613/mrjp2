@@ -36,6 +36,18 @@ char * i_concat(char * s1, char * s2) {
     return r;
 }
 
+int i_string_eq(char * s1, char * s2) {
+    size_t l = strlen(s1);
+    if (l != strlen(s2)) {
+        return 0;
+    }
+    if (memcmp(s1, s2, l) == 0) {
+        return 1;
+    } else {
+        return 0;
+    }
+}
+
 void i_meminit(void * addr, size_t n) {
     memset(addr, 0, n);
 }

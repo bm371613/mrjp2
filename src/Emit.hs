@@ -198,7 +198,7 @@ instance Emitable Program () where
         emitUnBuf "section .text"
         emitUnBuf
             "extern g_printInt,g_printString,g_error,g_readInt,g_readString"
-        emitUnBuf "extern i_concat, i_meminit"
+        emitUnBuf "extern i_concat, i_string_eq, i_meminit"
         emitUnBuf "extern malloc"
         emitUnBuf "\n"
 
@@ -577,16 +577,23 @@ instance Emitable Expr Type where
     emit (EAdd e1 Minus e2) = emitBinaryOperation "sub" e1 e2
     emit (ERel e1 rel e2) = do
         trueL <- mkLabel
-        emit e2
+        t <- emit e2
         emit e1
-        emit $ PopReg "eax"
-        emit $ PopReg "edx"
-        emit $ PushDword "1"
-        emitBuf "    cmp eax, edx"
-        emitBuf $ printf "    %s %s" (jmpInstr rel) trueL
-        emitBuf "    mov dword [esp], 0"
-        emit $ Label trueL
-        return $ TPrim Bool
+        if t == TPrim Str
+        then do
+            emitBuf "    call i_string_eq"
+            emit $ AddToEsp 8
+            emit $ PushReg "eax"
+            return $ TPrim Bool
+        else do
+            emit $ PopReg "eax"
+            emit $ PopReg "edx"
+            emit $ PushDword "1"
+            emitBuf "    cmp eax, edx"
+            emitBuf $ printf "    %s %s" (jmpInstr rel) trueL
+            emitBuf "    mov dword [esp], 0"
+            emit $ Label trueL
+            return $ TPrim Bool
         where
         jmpInstr LTH = "jl"
         jmpInstr LE = "jle"
