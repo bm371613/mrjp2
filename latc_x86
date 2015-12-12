@@ -1,6 +1,8 @@
 #!/bin/bash
 
-if [ ! -f ./dist/build/compile/compile ]
+DIR=$(cd "`dirname "$0"`"; pwd)
+
+if [ ! -f "$DIR"/dist/build/compile/compile ]
 then
     >&2 echo "Could not find the proper executable. Did you run \"make\"?"
     exit 1
@@ -8,14 +10,14 @@ fi
 
 FULL_PATH=$1
 
-if [ -z ${FULL_PATH} ]
+if [ -z "${FULL_PATH}" ]
 then
     >&2 echo "ERROR"
     echo "Usage: $0 INPUT_FILE"
     exit 1
 fi
 
-if [ ! -f ${FULL_PATH} ]
+if [ ! -f "${FULL_PATH}" ]
 then
     >&2 echo "ERROR"
     echo "No such file: ${FULL_PATH}"
@@ -25,7 +27,7 @@ fi
 NAME_WITH_EXTENSION=${FULL_PATH##*/}
 NAME=${NAME_WITH_EXTENSION%%.*}
 DIRECTORY=${FULL_PATH%${NAME_WITH_EXTENSION}}
-if [ -z ${DIRECTORY} ]
+if [ -z "${DIRECTORY}" ]
 then
     DIRECTORY=./
 fi
@@ -35,6 +37,6 @@ EXE_PATH="${DIRECTORY}${NAME}"
 
 set -e
 
-./dist/build/compile/compile $FULL_PATH >$ASM_PATH
-nasm -f elf32 -F dwarf $ASM_PATH -o $OBJ_PATH
-gcc -m32 -g -o $EXE_PATH $OBJ_PATH lib/runtime.o
+"$DIR"/dist/build/compile/compile "$FULL_PATH" > "$ASM_PATH"
+nasm -f elf32 -F dwarf "$ASM_PATH" -o "$OBJ_PATH"
+gcc -m32 -g -o "$EXE_PATH" "$OBJ_PATH" "$DIR"/lib/runtime.o
